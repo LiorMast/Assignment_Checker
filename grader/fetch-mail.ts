@@ -9,10 +9,12 @@ import {
   findGroup,
   findStudentIds,
   formatIsraelTime,
+  parseDeadline,
   parseIsraelTime,
   protocolViolations,
 } from './mail-parse';
 import { ROOT, groupsFile, resultsDir, submissionsDir } from './paths';
+import { SCHEDULE_FILE, exerciseKeyFor, exerciseNumber, loadSchedule } from './schedule';
 import { writeSubmissionsReport, type UnclassifiedMail } from './submissions-report';
 import type { GroupRecord } from './types';
 
@@ -22,8 +24,10 @@ const USAGE = `Usage: npm run fetch -- <exercise> [--since YYYY-MM-DD] [--deadli
   downloads each group's zip into submissions/<exercise>/cgroupXX.zip and writes
   results/<exercise>/submissions.html and submissions.xlsx.
 
-  --since      only mails from this date on (default: 120 days ago)
-  --deadline   Israel time; later mails are marked late (a date alone means 23:59)
+  --since      only mails from this date on (default: the publish date in exercises/schedule.md)
+  --deadline   Israel time; later mails are marked late. A date alone means the whole
+               day counts (late from the next day 00:00); default: the due date in
+               exercises/schedule.md
 
   Needs GMAIL_USER and GMAIL_APP_PASSWORD in .env (see .env.example).`;
 
@@ -47,11 +51,16 @@ async function main(): Promise<number> {
   const args = process.argv.slice(2);
   const exercise = args.shift();
   const options = parseOptions(args);
-  if (!exercise || !/^ex\d+$/.test(exercise) || !options) {
+  if (!exercise || !/^ex\d+[a-z]?$/.test(exercise) || !options) {
     console.error(USAGE);
     return 1;
   }
-  const number = Number(exercise.slice(2));
+  const number = exerciseNumber(exercise);
+  const schedule = loadSchedule();
+  const entry = schedule.find((e) => e.key === exercise);
+  if (!entry) console.warn(`  ! ${exercise} is not in ${path.relative(ROOT, SCHEDULE_FILE)}: scanning the last 120 days, no deadline`);
+  const since = options.since ?? entry?.publish ?? new Date(Date.now() - 120 * 24 * 3600 * 1000);
+  const deadline = options.deadline ?? entry?.due;
 
   if (fs.existsSync(path.join(ROOT, '.env'))) process.loadEnvFile(path.join(ROOT, '.env'));
   const user = process.env.GMAIL_USER;
@@ -61,9 +70,11 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  console.log(`Scanning ${user} for cgroup mails since ${options.since.toISOString().slice(0, 10)}...`);
-  const mails = await readMails(user, pass, options.since);
-  const forExercise = mails.filter((m) => m.exercise === number);
+  console.log(`${exercise}: mails from ${formatIsraelTime(since)}${deadline ? `, late from ${formatIsraelTime(deadline)}` : ', no deadline'}`);
+  console.log(`Scanning ${user} for cgroup mails...`);
+  const mails = await readMails(user, pass, since);
+  // Exercise parts share a number (tar5 for ex5a and ex5b): the mail's date decides which part it is.
+  const forExercise = mails.filter((m) => m.exercise === number && exerciseKeyFor(schedule, number, m.date) === exercise);
   const unclassified: UnclassifiedMail[] = mails
     .filter((m) => m.exercise === undefined)
     .map((m) => ({ group: m.group, date: m.date.toISOString(), subject: m.subject, from: m.from }));
@@ -80,7 +91,7 @@ async function main(): Promise<number> {
     const latest = all[all.length - 1];
     const record = await collect(latest, number, path.join(dir, `${group}.zip`));
     record.earlier = all.slice(0, -1).map((m) => ({ date: m.date.toISOString(), subject: m.subject, zipUrl: m.zipUrl }));
-    if (options.deadline && latest.date > options.deadline) {
+    if (deadline && latest.date >= deadline) {
       record.late = true;
       record.violations.push(`הוגש באיחור (${formatIsraelTime(latest.date)})`);
     }
@@ -93,7 +104,7 @@ async function main(): Promise<number> {
   }
   fs.writeFileSync(groupsFile(exercise), JSON.stringify(records, null, 2));
 
-  const report = await writeSubmissionsReport(resultsDir(exercise), exercise, Object.values(records), unclassified, options.deadline);
+  const report = await writeSubmissionsReport(resultsDir(exercise), exercise, Object.values(records), unclassified, deadline);
   const rel = (p: string) => path.relative(process.cwd(), p);
   const list = Object.values(records);
   console.log(
@@ -107,15 +118,14 @@ async function main(): Promise<number> {
   return 0;
 }
 
-function parseOptions(args: string[]): { since: Date; deadline?: Date } | undefined {
-  const since = new Date(Date.now() - 120 * 24 * 3600 * 1000);
-  const options: { since: Date; deadline?: Date } = { since };
+function parseOptions(args: string[]): { since?: Date; deadline?: Date } | undefined {
+  const options: { since?: Date; deadline?: Date } = {};
   for (let i = 0; i < args.length; i++) {
     const [flag, inline] = args[i].split('=', 2);
     const value = inline ?? args[++i];
     if (!value) return undefined;
     if (flag === '--since') options.since = parseIsraelTime(`${value} 00:00`);
-    else if (flag === '--deadline') options.deadline = parseIsraelTime(value);
+    else if (flag === '--deadline') options.deadline = parseDeadline(value);
     else return undefined;
   }
   return options;

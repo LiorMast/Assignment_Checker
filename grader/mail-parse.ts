@@ -28,24 +28,36 @@ export function findStudentIds(text: string): string[] {
   return [...new Set(text.match(ID_RE) ?? [])];
 }
 
+/**
+ * A server link whose folder or file names contain spaces, e.g.
+ * "proj.ruppin.ac.il/cgroup53/test1/tar1/322882689 318979994/322882689 318979994.zip".
+ * Mail clients make only the part before the first space clickable, so the link is read from the text:
+ * on one line, up to the first .zip/.html, without Hebrew and without another http:// inside.
+ */
+const SPACED_SERVER_LINK =
+  /(?:https?:\/\/|(?<![\w./@-]))proj\.ruppin\.ac\.il\/(?:(?!https?:\/\/)(?:[^\s<>"'\u0590-\u05ff\u200e\u200f]| (?! *[-–—:|]))){1,300}?\.(?:zip|html?)(?![\w])/gi;
+
 /** Every link in the mail: http(s) URLs and bare "proj.ruppin.ac.il/..." text, from text and HTML. */
 export function extractLinks(text: string, html = ''): string[] {
   const found: string[] = [];
   for (const m of html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)) found.push(decodeEntities(m[1]));
-  const plain = `${text}\n${html.replace(/<[^>]+>/g, ' ')}`;
-  for (const m of decodeEntities(plain).matchAll(/(?:https?:\/\/|(?<![\w./@-])proj\.ruppin\.ac\.il\/)[^\s<>"'‎‏]+/gi)) {
-    found.push(m[0]);
-  }
+  // Inline tags are removed without a space so a link split across <a>/<span> stays in one piece.
+  const htmlText = html.replace(/<(?:br|\/?(?:p|div|li|tr|td|h\d|ul|ol|table|blockquote))\b[^>]*>/gi, '\n').replace(/<[^>]+>/g, '');
+  const plain = decodeEntities(`${text}\n${htmlText}`).replace(/\u00a0/g, ' ');
+  for (const m of plain.matchAll(/(?:https?:\/\/|(?<![\w./@-])proj\.ruppin\.ac\.il\/)[^\s<>"'\u200e\u200f]+/gi)) found.push(m[0]);
+  for (const m of plain.matchAll(SPACED_SERVER_LINK)) found.push(m[0]);
+
   const links = new Set<string>();
   for (const raw of found) {
     const url = normalizeUrl(raw);
     if (url) links.add(url);
   }
-  return [...links];
+  // Drop the clickable stub of a link with spaces (".../tar1/322882689" of ".../tar1/322882689 318979994/...zip").
+  return [...links].filter((a) => ![...links].some((b) => b !== a && b.startsWith(a) && b.slice(a.length).startsWith('%20')));
 }
 
 function decodeEntities(text: string): string {
-  return text.replace(/&amp;/g, '&').replace(/&#x2F;/gi, '/').replace(/&#47;/g, '/');
+  return text.replace(/&nbsp;/gi, ' ').replace(/&amp;/g, '&').replace(/&#x2F;/gi, '/').replace(/&#47;/g, '/');
 }
 
 function normalizeUrl(raw: string): string | undefined {
@@ -131,6 +143,9 @@ export function protocolViolations(m: MailFacts): string[] {
     if (linkGroup && linkGroup !== m.group) out.push(`הקבוצה בלינק ${label} (${linkGroup}) שונה מהקבוצה בנושא (${m.group})`);
     else if (!normalizedPath(url).startsWith(expected)) out.push(`לינק ${label} אינו במבנה ${expected}: ${url}`);
   }
+  if ([m.viewUrl, m.zipUrl].some((url) => url && hostOf(url) === SERVER_HOST && url.includes('%20'))) {
+    out.push('יש רווחים בשמות התיקיות/הקבצים בלינק, ולכן הלינק אינו לחיץ במלואו');
+  }
   if (m.viewUrl && hostOf(m.viewUrl) === SERVER_HOST && !/\/index\.html?$/i.test(pathOf(m.viewUrl))) {
     out.push('לינק הצפייה אינו מצביע לדף index.html');
   }
@@ -143,6 +158,18 @@ function normalizedPath(url: string): string {
   parts[1] = findGroup(parts[1] ?? '') ?? parts[1];
   parts[3] = (parts[3] ?? '').replace(/^tar0*(\d+)$/, 'tar$1');
   return parts.join('/');
+}
+
+/**
+ * The moment from which a mail is late (exclusive cut-off), Israel time.
+ * A date alone means the whole day counts: "2026-11-04" → late from 05.11 00:00.
+ * With a time, that whole minute still counts: "2026-11-04 18:00" → late from 18:01.
+ */
+export function parseDeadline(text: string): Date {
+  const day = text.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!day) return new Date(parseIsraelTime(text).getTime() + 60_000);
+  const next = new Date(Date.UTC(+day[1], +day[2] - 1, +day[3] + 1)).toISOString().slice(0, 10);
+  return parseIsraelTime(`${next} 00:00`);
 }
 
 /** "YYYY-MM-DD HH:mm" (or just the date, meaning 23:59) in Israel time → Date. */

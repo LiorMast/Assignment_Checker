@@ -165,7 +165,7 @@ function reportHtml(exercise: string, records: GroupRecord[], unclassified: Uncl
 <body>
 <h1>הגשות ${e(exercise)}</h1>
 <p class="stats">${records.length} קבוצות הגישו · ${noZip.length} ללא zip · ${broken.length} לא לפי הנוהל · ${multiple.length} הגישו יותר מפעם אחת${
-    deadline ? ` · מועד אחרון ${e(formatIsraelTime(deadline))}` : ''
+    deadline ? ` · באיחור מ-${e(formatIsraelTime(deadline))}` : ''
   } · הופק ${e(formatIsraelTime(new Date()))}</p>
 <div class="sections">
 ${section(

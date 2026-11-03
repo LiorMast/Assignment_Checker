@@ -18,10 +18,12 @@ Groups email two links (per "נוהל הגשת תרגילי בית"): the page o
 2. Run:
 
    ```bash
-   npm run fetch -- ex1 --deadline "2026-11-10 23:59"   # --since 2026-10-01 to limit the scan (default: last 120 days)
+   npm run fetch -- ex1
    ```
 
-   - Every mail whose subject contains `cgroupXX` is read, even if the rest of the subject isn't standard. The exercise number is taken from the links (`/tar1/`) or the subject (`tar1`, `ex1`, `תרגיל 1`).
+   The scan starts at the exercise's publish date and marks mails as late from 00:00 of the day after the due date (the whole due day counts), both taken from [`exercises/schedule.md`](exercises/schedule.md). Override with `--since 2026-10-01` / `--deadline 2026-11-10` (or `"2026-11-10 18:00"` for a time). Parts of an exercise (`ex5a`, `ex5b`) share the number in the mails, so the mail's date decides which part it belongs to.
+
+   - Every mail whose subject contains `cgroupXX` is read, even if the rest of the subject isn't standard. Links whose folder names contain spaces (only partly clickable in the mail) are rebuilt from the text. The exercise number is taken from the links (`/tar1/`) or the subject (`tar1`, `ex1`, `תרגיל 1`).
    - The zip of each group's **latest** mail is saved as `submissions/ex1/cgroupXX.zip` (from the link; from an attachment if the link is missing or broken). Earlier mails from the same group are not used, but are listed in the report.
    - Student IDs are taken from the subject and saved with the mail details in `submissions/ex1/.groups.json`.
 3. Open the report in `results/ex1/`:
