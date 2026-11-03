@@ -1,0 +1,103 @@
+/* רוחב האלמנטים כולל גם padding ו-border */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Calibri, Arial, sans-serif;
+    background-color: #f4f4f4;
+    color: #222;
+}
+
+/* אזור הכותרת */
+.page-header {
+    background-color: #808080;
+    color: white;
+    text-align: center;
+    padding: 20px;
+}
+
+.page-header img {
+    max-width: 100%;
+    max-height: 85px;
+}
+
+/* אזור קופסאות המידע */
+.languages {
+    margin: 20px 0;
+}
+
+/*
+   הוספת אלמנט אחרי הקופסאות הצפות,
+   כדי שהאזור העוטף יכיל גם את גובהן.
+*/
+.languages::after {
+    content: "";
+    display: block;
+    clear: both;
+}
+
+.box {
+    float: right;
+    width: 30%;
+    margin: 0 1.66%;
+    padding: 20px;
+
+    background-color: #eaeaea;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.box h2 {
+    text-align: center;
+}
+
+.html-title {
+    color: red;
+}
+
+.css-title {
+    color: dodgerblue;
+}
+
+.js-title {
+    color: forestgreen;
+}
+
+p {
+    line-height: 24px;
+}
+
+/* טבלאות */
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    border: 1px solid #555;
+    padding: 8px;
+    text-align: right;
+}
+
+th {
+    background-color: #d5d5d5;
+}
+
+/* אזור השפות הנוספות */
+.popular-languages {
+    clear: both;
+    background-color: #808080;
+    color: white;
+    text-align: center;
+    padding: 20px;
+}
+
+.language-images img {
+    width: 12%;
+    max-width: 100px;
+    height: auto;
+    margin: 0 1%;
+}

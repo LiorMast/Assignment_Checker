@@ -1,0 +1,9 @@
+node_modules/
+# Student data and generated output
+submissions/
+.work/
+results/
+test-results/
+
+# Gmail credentials for npm run fetch
+.env

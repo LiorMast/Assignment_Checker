@@ -1,0 +1,26 @@
+{
+  "name": "assignment-checker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automated, repeatable grading of frontend exercises with Playwright",
+  "scripts": {
+    "fetch": "tsx grader/fetch-mail.ts",
+    "grade": "tsx grader/cli.ts",
+    "selftest": "playwright test --project=selftest"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/adm-zip": "^0.5.8",
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^26.6.6",
+    "adm-zip": "^0.6.1",
+    "exceljs": "^4.4.0",
+    "imapflow": "^2.10.0",
+    "mailparser": "^3.14.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
