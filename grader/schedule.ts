@@ -48,3 +48,21 @@ export function exerciseKeyFor(schedule: ScheduleEntry[], number: number, date: 
   if (!parts.length) return `ex${number}`;
   return (parts.filter((e) => e.publish <= date).pop() ?? parts[0]).key;
 }
+
+/**
+ * The exercise a mail belongs to, from the number it claims (tarN in the subject) and its date.
+ * The claimed number is used when that exercise was already published at the mail's date (this
+ * covers late mails and the overlap day between exercises); otherwise the date decides: the
+ * latest exercise published by then. Without a schedule row before the date, the claim is used.
+ */
+export function resolveExercise(
+  schedule: ScheduleEntry[],
+  hint: number | undefined,
+  date: Date,
+): { key?: string; number?: number; conflict: boolean } {
+  const published = schedule.filter((e) => e.publish <= date).sort((a, b) => a.publish.getTime() - b.publish.getTime());
+  const hintPlausible = hint !== undefined && published.some((e) => e.number === hint);
+  const number = hintPlausible || !published.length ? hint : published[published.length - 1].number;
+  if (number === undefined) return { conflict: false };
+  return { key: exerciseKeyFor(schedule, number, date), number, conflict: hint !== undefined && hint !== number };
+}

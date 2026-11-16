@@ -1,0 +1,75 @@
+/* רוחב האלמנטים כולל גם padding ו-border */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Calibri, Arial, sans-serif;
+    background-color: #f4f4f4;
+    color: #222;
+}
+
+/* אזור הכותרת */
+.page-header {
+    background-color: #808080;
+    color: white;
+    text-align: center;
+    padding: 20px;
+}
+
+.page-header img {
+    max-height: 85px;
+}
+
+/* אזור כרטיסי השפות (הפריסה נעשית במחלקות של Bootstrap) */
+.languages {
+    padding-top: 20px;
+    padding-bottom: 20px;
+}
+
+/* בלי float, רוחב ומרווחים: הכרטיס ממלא את העמודה שלו */
+.box {
+    padding: 20px;
+    background-color: #eaeaea;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.box h2 {
+    text-align: center;
+}
+
+.html-title {
+    color: red;
+}
+
+.css-title {
+    color: dodgerblue;
+}
+
+.js-title {
+    color: forestgreen;
+}
+
+p {
+    line-height: 24px;
+}
+
+/* שורת הכותרות של אזור הגרסאות (במקום th של הטבלה) */
+.versions-title {
+    background-color: #d5d5d5;
+    font-weight: bold;
+}
+
+/* אזור השפות הנוספות */
+.popular-languages {
+    background-color: #808080;
+    color: white;
+    text-align: center;
+    padding: 20px;
+}
+
+.language-images img {
+    max-height: 70px;
+}

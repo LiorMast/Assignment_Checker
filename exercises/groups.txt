@@ -1,0 +1,23 @@
+# Course groups for this semester (one per line; lines starting with # are ignored).
+# Used by `npm run fetch`: a mail subject with a misspelled prefix (bgroup60, xgroup 60)
+# is corrected to cgroupNN only when that group is listed here. Update every semester.
+cgroup50
+cgroup51
+cgroup52
+cgroup53
+cgroup54
+cgroup55
+cgroup56
+cgroup57
+cgroup58
+cgroup59
+cgroup60
+cgroup61
+cgroup62
+cgroup64
+cgroup65
+cgroup66
+cgroup67
+cgroup68
+cgroup70
+cgroup74

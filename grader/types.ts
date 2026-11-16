@@ -1,9 +1,13 @@
+import type { GroupSource } from './mail-parse';
+
 /** One student's submission after `prepare` (stored in .work/<exercise>/manifest.json). */
 export interface Submission {
   /** Student ID taken from the file/folder name (or a cleaned-up name when there is none). */
   id: string;
   /** Original file or folder name under submissions/<exercise>/. */
   source: string;
+  /** Added by hand in manual-submissions/<exercise>/: the grader chose this zip deliberately. */
+  manual?: boolean;
   /** Absolute path of the extracted submission; served as the web root. */
   rootDir?: string;
   /** Entry HTML file, relative to rootDir, with forward slashes. */
@@ -14,6 +18,19 @@ export interface Submission {
   group?: string;
   /** Student IDs of the group, taken from the submission mail. */
   students?: string[];
+  /** The group's submission mail (from npm run fetch), graded by the procedure checks. */
+  mail?: SubmissionMail;
+  /** Doubts found while preparing (e.g. the zip names hold another group's IDs); manual-review reasons. */
+  notes?: string[];
+}
+
+export interface SubmissionMail {
+  /** Undefined for a submission that came without a mail (manual-submissions/<ex>/cgroupNN/links.txt). */
+  subject?: string;
+  viewUrl?: string;
+  zipUrl?: string;
+  /** The exercise number the mail was assigned to. */
+  exercise: number;
 }
 
 /** A comment from the exercise's comments table that applies to a student. */
@@ -40,12 +57,24 @@ export interface StudentResult {
   /** Group submissions: graded once, written to grades.xlsx once per student ID. */
   group?: string;
   students?: string[];
+  /** A grade the grader typed by hand (grade-edits.json); replaces 100 minus the deductions. */
+  manualGrade?: number;
+  /** The grader changed this result by hand (grade-edits.json). */
+  edited?: boolean;
+  /** The grader marked this submission as checked (grade-edits.json). */
+  checked?: boolean;
 }
 
 /** One group's submission as collected by `npm run fetch` (submissions/<exercise>/.groups.json). */
 export interface GroupRecord {
   group: string;
-  /** Student IDs from the subject (or the body when the subject has none). */
+  /** How the mail's group was decided (`assignGroup`): link folder, sender, IDs, subject, or by hand. */
+  assignedBy?: GroupSource;
+  /** Sources that pointed to another group (Hebrew, for the grader). */
+  assignNotes?: string[];
+  /** The exercise number the mail was assigned to (title tarN + date). */
+  exercise: number;
+  /** The group's students from the roster (groups.xlsx); without a roster, the IDs in the subject (or body). */
   students: string[];
   /** ISO date of the mail that was used (the latest one from this group). */
   submittedAt: string;

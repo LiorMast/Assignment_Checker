@@ -6,6 +6,8 @@
   "scripts": {
     "fetch": "tsx grader/fetch-mail.ts",
     "grade": "tsx grader/cli.ts",
+    "calibrate": "tsx grader/calibrate.ts",
+    "report": "tsx grader/report.ts",
     "selftest": "playwright test --project=selftest"
   },
   "engines": {
@@ -17,6 +19,7 @@
     "@types/mailparser": "^3.9.0",
     "@types/node": "^26.6.6",
     "adm-zip": "^0.6.1",
+    "bootstrap": "5.3.3",
     "exceljs": "^4.4.0",
     "imapflow": "^2.10.0",
     "mailparser": "^3.14.1",

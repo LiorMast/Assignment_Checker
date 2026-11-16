@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import fs from 'node:fs';
 import path from 'node:path';
-import { formatIsraelTime } from './mail-parse';
+import { formatIsraelTime, type GroupSource } from './mail-parse';
 import { escapeHtml } from './output';
 import type { GroupRecord } from './types';
 
@@ -12,6 +12,14 @@ export interface UnclassifiedMail {
   subject: string;
   from: string;
 }
+
+const ASSIGNED_BY: Record<GroupSource, string> = {
+  'by-hand': 'שיוך ידני (mail-groups.json)',
+  link: 'לפי התיקייה בלינק',
+  sender: 'לפי כתובת השולח (groups.xlsx)',
+  ids: 'לפי ת"ז במייל (groups.xlsx)',
+  subject: 'לפי נושא המייל',
+};
 
 const ZIP_STATUS: Record<NonNullable<GroupRecord['zipSource']>, string> = {
   link: 'הורד מהלינק',
@@ -41,7 +49,12 @@ export async function writeSubmissionsReport(
   return [html, xlsx];
 }
 
-async function reportWorkbook(file: string, records: GroupRecord[], unclassified: UnclassifiedMail[], deadline?: Date) {
+async function reportWorkbook(
+  file: string,
+  records: GroupRecord[],
+  unclassified: UnclassifiedMail[],
+  deadline: Date | undefined,
+) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('הגשות', { views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }] });
   sheet.columns = [
@@ -56,6 +69,7 @@ async function reportWorkbook(file: string, records: GroupRecord[], unclassified
     { header: 'לא לפי הנוהל', width: 70 },
     { header: 'נושא המייל', width: 50 },
     { header: 'שולח', width: 35 },
+    { header: 'שיוך לקבוצה', width: 60 },
   ];
   sheet.getRow(1).font = { bold: true };
   const link = (url?: string) => (url ? { text: url, hyperlink: url } : null);
@@ -72,6 +86,7 @@ async function reportWorkbook(file: string, records: GroupRecord[], unclassified
       r.violations.join('\n') || null,
       r.subject,
       r.from,
+      [ASSIGNED_BY[r.assignedBy ?? 'subject'], ...(r.assignNotes ?? [])].join('\n'),
     ]);
     row.alignment = { vertical: 'top', wrapText: true };
     const color = !r.zipSource ? 'FFFECACA' : r.violations.length ? 'FFFEE2E2' : r.earlier.length ? 'FFFEF3C7' : undefined;
@@ -91,7 +106,12 @@ async function reportWorkbook(file: string, records: GroupRecord[], unclassified
   await workbook.xlsx.writeFile(file);
 }
 
-function reportHtml(exercise: string, records: GroupRecord[], unclassified: UnclassifiedMail[], deadline?: Date): string {
+function reportHtml(
+  exercise: string,
+  records: GroupRecord[],
+  unclassified: UnclassifiedMail[],
+  deadline: Date | undefined,
+): string {
   const e = escapeHtml;
   const a = (url?: string, label?: string) => (url ? `<a href="${e(url)}" target="_blank" rel="noreferrer">${e(label ?? url)}</a>` : '<span class="missing">חסר</span>');
   const ids = (r: GroupRecord) => (r.students.length ? r.students.map(e).join('<br>') : '<span class="missing">חסר</span>');
@@ -178,6 +198,10 @@ ${section(
 )}
 ${section('לא הורד קובץ zip', noZip.map((r) => `<li>${who(r)}: ${e(zipStatus(r))}</li>`))}
 ${section('לא נמצאו ת"ז', noIds.map((r) => `<li>${who(r)}</li>`))}
+${section(
+  'שיוך לקבוצה שונה ממקור אחר (לשינוי: manual-submissions/' + exercise + '/mail-groups.json)',
+  records.filter((r) => r.assignNotes?.length).map((r) => `<li>${who(r)}: ${e(r.assignNotes!.join(' | '))}</li>`),
+)}
 ${section(
   'מיילים ללא מספר תרגיל (לא הורדו)',
   unclassified.map((m) => `<li><b>${e(m.group)}</b> ${e(formatIsraelTime(m.date))} – ${e(m.subject)}</li>`),

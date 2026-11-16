@@ -1,0 +1,1960 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>עורך ציונים</title>
+<style>
+  :root {
+    --bg: #f6f6f3; --surface: #ffffff; --sunken: #f1f1ec; --text: #1d1d1b; --muted: #6b6b66; --line: #e4e4de;
+    --accent: #3b5bdb; --accent-soft: #e8ecfd; --on-accent: #ffffff;
+    --bad: #b93225; --bad-soft: #fbe9e6; --warn: #a45a07; --warn-soft: #fdf1d3; --good: #26734a; --good-soft: #e2f3e9;
+    --edit: #7048b8; --edit-soft: #f0eafb;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 8px 24px -12px rgb(0 0 0 / 0.12);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141513; --surface: #1d1e1c; --sunken: #181917; --text: #ecece8; --muted: #a3a39c; --line: #31322e;
+      --accent: #93a5fb; --accent-soft: #252b4a; --on-accent: #12142a;
+      --bad: #f28b7f; --bad-soft: #3b1f1b; --warn: #efb65f; --warn-soft: #382c12; --good: #7bcb9b; --good-soft: #17301f;
+      --edit: #c3a6f5; --edit-soft: #2c2340;
+      --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, "Segoe UI", "Noto Sans Hebrew", Arial, sans-serif;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 16px 96px; }
+  .num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+  [hidden] { display: none !important; }
+  code { direction: ltr; unicode-bidi: isolate; font-size: 0.875em; background: var(--sunken); padding: 1px 6px; border-radius: 5px; }
+
+  /* Buttons and fields */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface);
+    border-radius: 9px; padding: 8px 14px; cursor: pointer; white-space: nowrap; transition: background-color .15s, border-color .15s;
+    text-decoration: none;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--muted); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn.small { padding: 5px 10px; font-size: 14px; }
+  .btn.ghost { border-color: transparent; background: none; }
+  .btn.ghost:hover:not(:disabled) { background: var(--sunken); border-color: transparent; }
+  .btn.danger { color: var(--bad); }
+  .btn svg { width: 16px; height: 16px; flex: none; }
+  .icon-btn {
+    display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 0; background: none;
+    color: var(--muted); cursor: pointer; flex: none;
+  }
+  .icon-btn:hover { background: var(--sunken); color: var(--text); }
+  .icon-btn.danger:hover { color: var(--bad); background: var(--bad-soft); }
+  .icon-btn svg { width: 17px; height: 17px; }
+  .field {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0;
+  }
+  .field:hover { border-color: color-mix(in srgb, var(--muted) 60%, var(--line)); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); display: inline-block; }
+
+  /* Header */
+  .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { margin: 0; font-size: 24px; line-height: 1.25; font-weight: 700; text-wrap: balance; }
+  .sub { margin: 4px 0 0; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .status { margin: -8px 0 16px; font-size: 14px; color: var(--muted); }
+  .status.ok { color: var(--good); }
+  .warning {
+    margin: 0 0 16px; padding: 12px 14px; border-radius: 10px; background: var(--warn-soft); color: var(--warn);
+  }
+  .banner {
+    display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    margin: 0 0 16px; padding: 10px 14px; border-radius: 10px; background: var(--edit-soft); color: var(--edit);
+  }
+
+  /* Start screen */
+  .drop {
+    margin-top: 8vh; padding: 56px 24px; text-align: center; background: var(--surface);
+    border: 2px dashed var(--line); border-radius: 18px;
+  }
+  .drop h2 { margin: 0 0 6px; font-size: 20px; }
+  .drop p { margin: 0 0 20px; color: var(--muted); }
+  .drop .hint { margin: 18px 0 0; font-size: 13px; }
+  body.dragging .drop, body.dragging .list { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .error {
+    margin: 0 0 16px; padding: 12px 14px; border-radius: 10px; background: var(--bad-soft); color: var(--bad);
+    border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); white-space: pre-line;
+  }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 26px; line-height: 1.2; font-weight: 700; }
+  .stat span { color: var(--muted); font-size: 13px; }
+
+  /* Toolbar */
+  .tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .tools input[type=search], .tools select {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; min-height: 40px;
+  }
+  .tools input[type=search] { flex: 1 1 220px; min-width: 0; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 13px;
+    font-size: 14px; cursor: pointer;
+  }
+  .chip[aria-pressed=true] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .count { color: var(--muted); font-size: 14px; }
+  .meta div { display: flex; gap: 6px; }
+
+  /* Accordion */
+  .list { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .item + .item { border-top: 1px solid var(--line); }
+  .head {
+    display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 14px; width: 100%;
+    padding: 14px 16px; background: none; border: 0; text-align: start; cursor: pointer;
+  }
+  .item-head { display: flex; align-items: stretch; }
+  .item-head:hover { background: var(--sunken); }
+  .item-head .head { flex: 1; min-width: 0; padding-inline-start: 4px; }
+  .head:focus-visible, .check:focus-visible { outline-offset: -2px; }
+  .check {
+    flex: none; display: grid; place-items: center; width: 46px; padding: 0; padding-inline-start: 8px;
+    border: 0; background: none; cursor: pointer; color: var(--on-accent);
+  }
+  .check .box {
+    width: 22px; height: 22px; border-radius: 7px; border: 2px solid color-mix(in srgb, var(--muted) 55%, var(--line));
+    display: grid; place-items: center; transition: background-color .15s, border-color .15s;
+  }
+  .check .box svg { width: 15px; height: 15px; opacity: 0; transition: opacity .15s; }
+  .check:hover .box { border-color: var(--good); }
+  .check[aria-pressed=true] .box { background: var(--good); border-color: var(--good); }
+  .check[aria-pressed=true] .box svg { opacity: 1; }
+  .item.checked .name > span:first-child { color: var(--muted); }
+  .who { min-width: 0; }
+  .name { font-weight: 650; font-size: 17px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ids { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  .tag { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); }
+  .tag.edit { background: var(--edit-soft); color: var(--edit); }
+  .tag.done { background: var(--good-soft); color: var(--good); }
+  .brief { color: var(--muted); font-size: 14px; white-space: nowrap; text-align: end; }
+  .brief .minus { color: var(--bad); font-weight: 600; }
+  .grade {
+    min-width: 58px; text-align: center; padding: 5px 10px; border-radius: 10px; font-size: 20px; font-weight: 700;
+    background: var(--sunken); color: var(--muted);
+  }
+  .grade.good { background: var(--good-soft); color: var(--good); }
+  .grade.mid { background: var(--warn-soft); color: var(--warn); }
+  .grade.low { background: var(--bad-soft); color: var(--bad); }
+  .grade.manual { box-shadow: inset 0 0 0 2px var(--edit); }
+  .chev { width: 18px; height: 18px; color: var(--muted); transition: transform .2s ease; flex: none; }
+  .item.open .chev { transform: rotate(180deg); }
+  .end { display: flex; align-items: center; gap: 12px; }
+
+  .panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .22s ease; }
+  .item.open .panel { grid-template-rows: 1fr; }
+  .inner { overflow: hidden; min-height: 0; visibility: hidden; transition: visibility 0s .22s; }
+  .item.open .inner { visibility: visible; transition-delay: 0s; }
+  .body { padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* Manual review */
+  .reviews { background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 10px 12px 10px 14px; font-size: 14px; }
+  .reviews strong { display: block; margin-bottom: 4px; }
+  .reviews ul { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .reviews li { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+  .reviews li > span { overflow-wrap: anywhere; min-width: 0; }
+  .reviews li.done > span { text-decoration: line-through; opacity: .7; }
+  .reviews .btn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: transparent; }
+  .reviews .note-tag { font-size: 12px; font-weight: 600; margin-inline-end: 6px; }
+  .note-row { display: flex; gap: 8px; }
+  .note-row input { flex: 1; background: var(--surface); }
+  .review-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+  /* Comments of a group */
+  .flags { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .flag { display: grid; grid-template-columns: 44px 1fr auto auto; gap: 10px; padding: 10px 10px 10px 8px; align-items: start; padding-inline-start: 14px; }
+  .flag + .flag { border-top: 1px solid var(--line); }
+  .flag.changed { background: color-mix(in srgb, var(--edit-soft) 55%, transparent); }
+  .no {
+    font-size: 13px; font-weight: 600; text-align: center; padding: 2px 0; border-radius: 6px; margin-top: 4px;
+    background: var(--sunken); color: var(--muted);
+  }
+  .text { min-width: 0; overflow-wrap: anywhere; padding-top: 2px; }
+  .text .mark { font-size: 12px; font-weight: 600; color: var(--edit); margin-inline-start: 6px; white-space: nowrap; }
+  .detail {
+    display: block; width: 100%; margin-top: 4px; padding: 3px 8px; border: 1px solid transparent; border-radius: 6px;
+    background: transparent; color: var(--muted); font-size: 14px; resize: none; field-sizing: content; min-height: 28px;
+    border-inline-start: 2px solid var(--line); border-start-start-radius: 0; border-end-start-radius: 0;
+  }
+  .detail:hover { border-color: var(--line); }
+  .detail:focus { border-color: var(--accent); color: var(--text); background: var(--surface); outline: none; }
+  .detail::placeholder { color: color-mix(in srgb, var(--muted) 55%, transparent); }
+  .pts-field { display: flex; align-items: center; gap: 4px; color: var(--bad); font-weight: 700; padding-top: 1px; }
+  .pts-field input {
+    width: 58px; text-align: center; font-weight: 700; color: var(--bad); padding: 4px 4px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  }
+  .flag.note .pts-field, .flag.note .pts-field input { color: var(--muted); font-weight: 500; }
+  .flag.removed { background: var(--sunken); }
+  .flag.removed .text > span:first-child, .flag.removed .no { text-decoration: line-through; color: var(--muted); }
+  .flag.removed .gone { color: var(--muted); font-size: 13px; padding-top: 4px; white-space: nowrap; }
+
+  /* Add a comment */
+  .adder { position: relative; }
+  .adder input { width: 100%; padding: 8px 12px; border-style: dashed; }
+  .options {
+    position: absolute; inset-inline: 0; top: calc(100% + 4px); z-index: 5; margin: 0; padding: 4px; list-style: none;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+    max-height: 300px; overflow: auto;
+  }
+  .options button {
+    display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; width: 100%; text-align: start; padding: 7px 10px;
+    border: 0; border-radius: 7px; background: none; cursor: pointer; font-size: 14px; align-items: start;
+  }
+  .options button:hover, .options button.active { background: var(--accent-soft); }
+  .options .o-no { color: var(--muted); font-weight: 600; text-align: center; }
+  .options .o-pts { color: var(--bad); font-weight: 600; white-space: nowrap; }
+  .options .o-new { grid-template-columns: 1fr; color: var(--accent); font-weight: 600; }
+  .new-comment {
+    display: grid; grid-template-columns: 1fr 90px auto auto; gap: 8px; align-items: center;
+    padding: 10px; border: 1px dashed var(--accent); border-radius: 10px; background: var(--accent-soft);
+  }
+  .new-comment label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+
+  /* Grade line */
+  .total { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 15px; color: var(--muted); }
+  .total b { color: var(--text); }
+  .grade-edit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .grade-edit input { width: 76px; text-align: center; font-weight: 700; font-size: 17px; padding: 4px 6px; }
+  .grade-edit input.manual { border-color: var(--edit); color: var(--edit); }
+  .formula { font-size: 14px; }
+  .group-actions { display: flex; gap: 6px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 10px; }
+  .clean { margin: 0; color: var(--good); }
+  .empty { padding: 36px 16px; text-align: center; color: var(--muted); }
+
+  /* Comment pool dialog */
+  dialog {
+    width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 1px solid var(--line);
+    border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.4);
+  }
+  dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+  .dlg { display: flex; flex-direction: column; max-height: calc(100dvh - 50px); }
+  .dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 10px; }
+  .dlg-head h2 { margin: 0; font-size: 19px; }
+  .dlg-tools { padding: 0 18px 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .dlg-tools input { flex: 1 1 200px; }
+  .dlg-body { overflow: auto; padding: 0 18px; flex: 1; }
+  .pool { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .pool th button {
+    display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; cursor: pointer;
+    font-weight: 600; color: inherit;
+  }
+  .pool th button::after { content: '↕'; font-size: 11px; opacity: .35; }
+  .pool th[aria-sort=ascending] button::after { content: '↑'; opacity: 1; }
+  .pool th[aria-sort=descending] button::after { content: '↓'; opacity: 1; }
+  .pool th[aria-sort] { color: var(--text); }
+  .pool th { position: sticky; top: 0; background: var(--surface); text-align: start; font-weight: 600; color: var(--muted); padding: 8px 6px; border-bottom: 1px solid var(--line); z-index: 1; }
+  .pool td { padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .pool tr.changed td { background: color-mix(in srgb, var(--edit-soft) 55%, transparent); }
+  .pool .c-no { width: 50px; text-align: center; font-weight: 600; color: var(--muted); padding-top: 12px; }
+  .pool textarea { width: 100%; resize: none; field-sizing: content; min-height: 34px; }
+  .pool input[type=number] { width: 70px; text-align: center; }
+  .pool .label { display: inline-block; padding-top: 6px; color: var(--muted); }
+  .pool .uses { white-space: nowrap; }
+  .pool .row-actions { white-space: nowrap; width: 1%; }
+  .pool .orig { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .dlg-foot {
+    display: grid; grid-template-columns: 1fr 100px auto; gap: 8px; align-items: end; padding: 12px 18px 16px;
+    border-top: 1px solid var(--line); background: var(--sunken); border-radius: 0 0 16px 16px;
+  }
+  .dlg-foot label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+
+  .toast {
+    position: fixed; inset-inline: 0; bottom: 20px; margin: 0 auto; width: max-content; max-width: calc(100vw - 32px);
+    padding: 10px 16px; border-radius: 10px; background: var(--text); color: var(--bg); font-size: 14px;
+    box-shadow: var(--shadow); z-index: 20;
+  }
+
+  @media (max-width: 600px) {
+    .head { grid-template-columns: 1fr auto; row-gap: 4px; }
+    .check { width: 38px; padding-inline-start: 6px; }
+    .brief { grid-column: 1; grid-row: 2; text-align: start; }
+    .end { grid-column: 2; grid-row: 1 / span 2; }
+    .flag { grid-template-columns: 36px 1fr auto; gap: 8px; padding-inline-start: 8px; }
+    .flag > .text { grid-row: span 2; }
+    .flag > .icon-btn, .flag > .btn { grid-column: 3; grid-row: 2; justify-self: center; align-self: start; }
+    .new-comment { grid-template-columns: 1fr 90px; }
+    .dlg-foot { grid-template-columns: 1fr 90px; }
+    .dlg-foot .btn { grid-column: span 2; justify-content: center; }
+    .pool .c-uses-h, .pool .uses { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .panel, .chev, .inner { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <input type="file" id="file" accept=".xlsx" hidden>
+  <p class="warning" id="embedded" hidden>הדף פתוח בתוך VS Code (או בתוך מסגרת), ושם אי אפשר לשמור או להוריד קבצים. פתחו את grades-viewer.html מתיקיית הפרויקט ב-Chrome או ב-Edge.</p>
+  <p class="error" id="error" role="alert" hidden></p>
+
+  <section class="drop" id="start">
+    <h2>עורך ציונים</h2>
+    <p>ייבאו את קובץ הציונים שנוצר בבדיקה: <code>results/ex1/grades.xlsx</code></p>
+    <button class="btn primary" type="button" data-import>ייבוא קובץ ציונים</button>
+    <p class="hint">אפשר גם לגרור את הקובץ לכאן. הקובץ נקרא בדפדפן בלבד ואינו נשלח לשום מקום.</p>
+  </section>
+
+  <main id="app" hidden>
+    <header class="top">
+      <div>
+        <h1 id="title"></h1>
+        <p class="sub" id="sub"></p>
+      </div>
+      <div class="actions">
+        <button class="icon-btn" type="button" id="undo" title="ביטול (Ctrl+Z)" aria-label="ביטול"></button>
+        <button class="icon-btn" type="button" id="redo" title="חזרה (Ctrl+Y)" aria-label="חזרה"></button>
+        <button class="btn" type="button" id="open-pool">טבלת הערות</button>
+        <button class="btn" type="button" data-import>ייבוא</button>
+        <button class="btn" type="button" id="download" title="הורדת grades.xlsx המעודכן">הורדה</button>
+        <button class="btn" type="button" id="download-publish" title="הורדת קובץ ציונים לפרסום לסטודנטים (ציונים וטבלת הערות בלבד)">הורד גרסה לפרסום</button>
+        <button class="btn primary" type="button" id="save" title="שמירה (Ctrl+S)">שמירה <span class="dot" id="dirty" hidden></span></button>
+      </div>
+    </header>
+    <p class="status" id="status" aria-live="polite" hidden></p>
+    <div class="banner" id="draft" hidden>
+      <span id="draft-text"></span>
+      <span class="actions">
+        <button class="btn small" type="button" id="draft-restore">שחזור הטיוטה</button>
+        <button class="btn small ghost" type="button" id="draft-drop">מחיקה</button>
+      </span>
+    </div>
+
+    <section class="stats" id="stats" aria-label="סיכום"></section>
+
+    <div class="tools">
+      <input type="search" id="search" placeholder="חיפוש: קבוצה, ת״ז, טקסט, או #43 למספר הערה" aria-label="חיפוש">
+      <select id="sort" aria-label="מיון">
+        <option value="group">מיון: קבוצה</option>
+        <option value="asc">מיון: ציון מהנמוך לגבוה</option>
+        <option value="desc">מיון: ציון מהגבוה לנמוך</option>
+      </select>
+      <div class="chips" id="filters" role="group" aria-label="סינון">
+        <button class="chip" type="button" data-filter="all" aria-pressed="true">הכול</button>
+        <button class="chip" type="button" data-filter="deduct" aria-pressed="false">עם הורדות</button>
+        <button class="chip" type="button" data-filter="review" aria-pressed="false">לבדיקה ידנית</button>
+        <button class="chip" type="button" data-filter="edited" aria-pressed="false">נערכו</button>
+        <button class="chip" type="button" data-filter="unchecked" aria-pressed="false">לא נבדקו</button>
+        <button class="chip" type="button" data-filter="checked" aria-pressed="false">נבדקו</button>
+      </div>
+    </div>
+    <div class="meta">
+      <span class="count" id="count" aria-live="polite"></span>
+    </div>
+
+    <div class="list" id="list"></div>
+  </main>
+</div>
+
+<dialog id="pool" aria-labelledby="pool-title">
+  <div class="dlg">
+    <div class="dlg-head">
+      <h2 id="pool-title">טבלת הערות</h2>
+      <button class="icon-btn" type="button" id="pool-close" aria-label="סגירה"></button>
+    </div>
+    <div class="dlg-tools">
+      <input class="field" type="search" id="pool-search" placeholder="חיפוש הערה: מספר או טקסט" aria-label="חיפוש הערה">
+      <label class="btn small ghost"><input type="checkbox" id="pool-used"> רק הערות בשימוש</label>
+    </div>
+    <div class="dlg-body">
+      <table class="pool">
+        <thead id="pool-head"><tr>
+          <th data-sort="no"><button type="button">מס׳</button></th>
+          <th data-sort="text"><button type="button">תוכן ההערה</button></th>
+          <th data-sort="points"><button type="button">הורדה</button></th>
+          <th data-sort="uses" class="c-uses-h"><button type="button">בשימוש</button></th>
+          <th></th>
+        </tr></thead>
+        <tbody id="pool-rows"></tbody>
+      </table>
+    </div>
+    <form class="dlg-foot" id="pool-add">
+      <label>הערה חדשה<input class="field" id="pool-new-text" required placeholder="תוכן ההערה"></label>
+      <label>הורדה<input class="field num" id="pool-new-points" type="number" min="0" step="any" value="1" required></label>
+      <button class="btn primary" type="submit">הוספה לטבלה</button>
+    </form>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+'use strict';
+
+/* =====================================================================================
+   xlsx reading (zip + XML), no libraries
+   ===================================================================================== */
+
+async function openZip(buffer) {
+  const view = new DataView(buffer);
+  let end = buffer.byteLength - 22;
+  while (end >= 0 && view.getUint32(end, true) !== 0x06054b50) end--;
+  if (end < 0) throw new Error('הקובץ אינו קובץ xlsx תקין.');
+  const count = view.getUint16(end + 10, true);
+  let at = view.getUint32(end + 16, true);
+  const utf8 = new TextDecoder();
+  const entries = new Map();
+  for (let i = 0; i < count && view.getUint32(at, true) === 0x02014b50; i++) {
+    const nameLength = view.getUint16(at + 28, true);
+    const name = utf8.decode(new Uint8Array(buffer, at + 46, nameLength));
+    // Sizes come from the central directory: the local headers of streamed entries have none.
+    entries.set(name, { method: view.getUint16(at + 10, true), size: view.getUint32(at + 20, true), offset: view.getUint32(at + 42, true) });
+    at += 46 + nameLength + view.getUint16(at + 30, true) + view.getUint16(at + 32, true);
+  }
+  return async (name) => {
+    const entry = entries.get(name);
+    if (!entry) return null;
+    const start = entry.offset + 30 + view.getUint16(entry.offset + 26, true) + view.getUint16(entry.offset + 28, true);
+    const bytes = new Uint8Array(buffer, start, entry.size);
+    if (entry.method === 0) return utf8.decode(bytes);
+    if (entry.method !== 8) throw new Error('שיטת דחיסה לא נתמכת בקובץ.');
+    return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  };
+}
+
+const parseXml = (text) => new DOMParser().parseFromString(text, 'application/xml');
+const tags = (node, name) => [...node.getElementsByTagName(name)];
+const richText = (node) =>
+  tags(node, 't').filter((t) => t.parentNode.nodeName !== 'rPh').map((t) => t.textContent).join('');
+
+/** A sheet as [{ n: row number, cells: { A: value, B: value } }]; empty cells are left out. */
+function parseSheet(xml, shared) {
+  return tags(parseXml(xml), 'row').map((row) => {
+    const cells = {};
+    for (const c of tags(row, 'c')) {
+      const column = (c.getAttribute('r') || '').replace(/\d+/g, '');
+      const type = c.getAttribute('t');
+      let value;
+      if (type === 'inlineStr') value = richText(c);
+      else {
+        const v = c.getElementsByTagName('v')[0];
+        if (!v) continue;
+        const raw = v.textContent;
+        if (type === 's') value = shared[Number(raw)] ?? '';
+        else if (type === 'str' || type === 'b' || type === 'e') value = raw;
+        else value = Number.isNaN(Number(raw)) ? raw : Number(raw);
+      }
+      if (value !== '') cells[column] = value;
+    }
+    return { n: Number(row.getAttribute('r')), cells };
+  });
+}
+
+/** All sheets of the workbook, in order: [{ name, rows }]. */
+async function readWorkbook(buffer) {
+  const read = await openZip(buffer);
+  const workbook = await read('xl/workbook.xml');
+  const rels = await read('xl/_rels/workbook.xml.rels');
+  if (!workbook || !rels) throw new Error('הקובץ אינו חוברת Excel (xlsx).');
+  const targets = new Map(tags(parseXml(rels), 'Relationship').map((r) => [r.getAttribute('Id'), r.getAttribute('Target')]));
+  const sharedXml = await read('xl/sharedStrings.xml');
+  const shared = sharedXml ? tags(parseXml(sharedXml), 'si').map(richText) : [];
+  const sheets = [];
+  for (const sheet of tags(parseXml(workbook), 'sheet')) {
+    const target = targets.get(sheet.getAttribute('r:id')) || '';
+    const xml = await read(target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`);
+    if (xml) sheets.push({ name: sheet.getAttribute('name'), rows: parseSheet(xml, shared) });
+  }
+  return sheets;
+}
+
+/* =====================================================================================
+   grades.xlsx → base data (automatic results, comments table) + hand edits
+   ===================================================================================== */
+
+const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+const DETAILS_SHEET = 'פירוט';
+const DATA_SHEET = 'grader-data';
+const REVIEW = 'לבדיקה ידנית';
+const FIRST_MANUAL_NO = 201;
+
+/** The hidden sheet written by the grader (grader/output.ts): automatic results, comments table, edits. */
+function readDataSheet(sheets) {
+  const sheet = sheets.find((s) => s.name === DATA_SHEET);
+  if (!sheet) return null;
+  const values = new Map();
+  for (const { cells } of sheet.rows) {
+    if (cells.A === undefined) continue;
+    const key = String(cells.A);
+    values.set(key, (values.get(key) ?? '') + String(cells.B ?? ''));
+  }
+  const parse = (key) => JSON.parse(values.get(key));
+  const meta = parse('meta');
+  if (meta.format !== 1) throw new Error('גרסת נתוני הבודק בקובץ אינה נתמכת.');
+  const results = [...values.keys()].filter((k) => k.startsWith('result:')).map(parse);
+  return { base: { meta, comments: parse('comments'), results }, edits: normalizeEdits(parse('edits')) };
+}
+
+function findHeader(rows, label) {
+  return rows.slice(0, 6).find((row) => Object.values(row.cells).some((v) => clean(v) === label));
+}
+const columnOf = (row, test) => Object.keys(row.cells).find((column) => test(clean(row.cells[column])));
+
+/** A workbook without the hidden data sheet (older or hand-made): its visible sheets become the base. */
+function readVisibleSheets(sheets) {
+  const main = sheets.find((s) => s.name !== DETAILS_SHEET && findHeader(s.rows, 'זהות'));
+  if (!main) throw new Error('לא נמצא גיליון ציונים עם העמודה "זהות". יש לבחור את הקובץ grades.xlsx שנוצר בבדיקה.');
+  const header = findHeader(main.rows, 'זהות');
+  const col = {
+    id: columnOf(header, (v) => v === 'זהות'),
+    grade: columnOf(header, (v) => v.startsWith('ציון')),
+    numbers: columnOf(header, (v) => v.startsWith('מספרי הערות')),
+    review: columnOf(header, (v) => v === REVIEW),
+    group: columnOf(header, (v) => v === 'קבוצה'),
+    no: columnOf(header, (v) => v === 'מספר הערה'),
+    text: columnOf(header, (v) => v === 'תוכן הערה'),
+    points: columnOf(header, (v) => v === 'ניקוד להפחתה'),
+  };
+  if (!col.grade) throw new Error('לא נמצאה עמודת הציון בגיליון הציונים.');
+
+  const firstTexts = Object.values(main.rows.find((row) => row.n < header.n)?.cells ?? {}).map(clean);
+  const title = firstTexts.find((v) => !v.includes('טבלת הערות')) || main.name;
+  const version = Number(/(\d+)/.exec(firstTexts.find((v) => v.includes('טבלת הערות')) || '')?.[1] ?? 0);
+  const exercise = `ex${/(\d+)/.exec(title)?.[1] ?? /(\d+)/.exec(main.name)?.[1] ?? ''}`;
+
+  const comments = [];
+  const groups = new Map();
+  for (const { n, cells } of main.rows) {
+    if (n <= header.n) continue;
+    if (col.no && typeof cells[col.no] === 'number') {
+      const points = cells[col.points];
+      const no = cells[col.no];
+      const perUnit = typeof points !== 'number';
+      comments.push({ key: `N${no}`, no, text: clean(cells[col.text]), points: perUnit ? Number(/[\d.]+/.exec(String(points ?? ''))?.[0] ?? 0) : points, ...(perUnit ? { perUnit: true } : {}) });
+    }
+    if (cells[col.id] === undefined) continue;
+    const id = clean(cells[col.id]);
+    const groupName = clean(col.group ? cells[col.group] : '');
+    const name = groupName || id;
+    let g = groups.get(name);
+    if (!g) {
+      const grade = cells[col.grade];
+      g = { name, groupName, ids: [], grade: typeof grade === 'number' ? grade : null, numbers: clean(col.numbers ? cells[col.numbers] : '').split(',').map((s) => s.trim()).filter(Boolean).map(Number), reviewCell: clean(col.review ? cells[col.review] : ''), flags: [], reviews: [], detailsFrom: null };
+      groups.set(name, g);
+    }
+    if (!groupName || id !== groupName) g.ids.push(id);
+  }
+
+  const details = sheets.find((s) => s.name === DETAILS_SHEET);
+  const dHeader = details && findHeader(details.rows, 'זהות');
+  if (dHeader) {
+    const d = {
+      id: columnOf(dHeader, (v) => v === 'זהות'),
+      no: columnOf(dHeader, (v) => v === 'מספר הערה'),
+      text: columnOf(dHeader, (v) => v === 'תוכן הערה'),
+      points: columnOf(dHeader, (v) => v === 'ניקוד להפחתה'),
+      detail: columnOf(dHeader, (v) => v === 'פירוט'),
+      group: columnOf(dHeader, (v) => v === 'קבוצה'),
+    };
+    for (const { n, cells } of details.rows) {
+      if (n <= dHeader.n || cells[d.id] === undefined) continue;
+      const id = clean(cells[d.id]);
+      const g = groups.get(clean(d.group ? cells[d.group] : '') || id);
+      if (!g) continue;
+      // The rows repeat for every student of the group; the first student's rows are enough.
+      g.detailsFrom ??= id;
+      if (g.detailsFrom !== id) continue;
+      const detail = String(cells[d.detail] ?? '').trim();
+      if (cells[d.no] === undefined) g.reviews.push(detail || clean(cells[d.text]));
+      else g.flags.push({ key: `N${cells[d.no]}`, no: Number(cells[d.no]), text: clean(cells[d.text]), points: Number(cells[d.points]) || 0, ...(detail ? { detail } : {}) });
+    }
+  }
+
+  const edits = { version: 1 };
+  const results = [...groups.values()].map((g) => {
+    let flags = g.flags;
+    if (!flags.length && g.numbers.length) {
+      flags = g.numbers.map((no) => {
+        const c = comments.find((x) => x.no === no);
+        return { key: `N${no}`, no, text: c?.text || 'הערה שאינה בטבלת ההערות', points: c?.perUnit ? 0 : (c?.points ?? 0) };
+      });
+    }
+    const review = g.reviews.length ? g.reviews : g.reviewCell ? g.reviewCell.split('; ') : [];
+    const result = { id: g.groupName ? (g.ids[0] ?? g.name) : g.name, graded: g.grade !== null, flags, review, ...(g.groupName ? { group: g.groupName, students: g.ids } : {}) };
+    // A grade that doesn't follow the deductions was set by hand: keep it as a hand edit.
+    if (g.grade !== null && g.grade !== Math.max(0, 100 - flags.reduce((s, f) => s + f.points, 0))) {
+      (edits.groups ??= {})[g.name] = { grade: g.grade };
+    }
+    return result;
+  });
+  return { base: { meta: { format: 1, exercise, title, sheetName: main.name, gradeHeader: clean(header.cells[col.grade]), commentsVersion: version }, comments, results }, edits };
+}
+
+function normalizeEdits(edits) {
+  const e = edits && typeof edits === 'object' ? structuredClone(edits) : {};
+  e.version = 1;
+  return e;
+}
+
+/* =====================================================================================
+   Applying the hand edits: the same rules as applyEdits in grader/edits.ts
+   ===================================================================================== */
+
+const nameOf = (r) => r.group ?? r.id;
+
+function editedComments(comments, edits) {
+  const known = new Set(comments.map((c) => c.no));
+  const table = comments.map((c) => {
+    const e = edits.comments?.[c.no];
+    return { ...c, text: e?.text ?? c.text, points: c.perUnit ? c.points : (e?.points ?? c.points) };
+  });
+  const added = Object.keys(edits.comments ?? {}).map(Number).filter((no) => !known.has(no)).sort((a, b) => a - b);
+  for (const no of added) {
+    const e = edits.comments[no];
+    table.push({ key: `MANUAL_${no}`, no, text: e.text ?? '', points: e.points ?? 0, manual: true });
+  }
+  return table;
+}
+
+const hasEdits = (g) =>
+  !!g && (Object.keys(g.flags ?? {}).length > 0 || g.grade !== undefined || !!g.graded || !!g.dismissed?.length || !!g.notes?.length);
+
+function applyEdits(base, edits) {
+  const table = editedComments(base.comments, edits);
+  const byNo = new Map(table.map((c) => [c.no, c]));
+  const results = base.results.map((r) => {
+    const g = edits.groups?.[nameOf(r)];
+    const flags = [];
+    for (const flag of r.flags) {
+      const edit = g?.flags?.[flag.no];
+      if (edit === null) continue;
+      const comment = byNo.get(flag.no);
+      const tablePoints = comment && !comment.perUnit ? edits.comments?.[flag.no]?.points : undefined;
+      const detail = edit?.detail ?? flag.detail;
+      flags.push({ ...flag, text: comment?.text ?? flag.text, points: edit?.points ?? tablePoints ?? flag.points, detail: detail || undefined });
+    }
+    const automatic = new Set(r.flags.map((f) => f.no));
+    const added = Object.keys(g?.flags ?? {}).map(Number).filter((no) => g.flags[no] !== null && !automatic.has(no)).sort((a, b) => a - b);
+    for (const no of added) {
+      const comment = byNo.get(no);
+      if (!comment) continue;
+      const edit = g.flags[no];
+      flags.push({ key: comment.key, no, text: comment.text, points: edit.points ?? comment.points, detail: edit.detail || undefined });
+    }
+    const review = [...r.review.filter((reason) => !g?.dismissed?.includes(reason)), ...(g?.notes ?? [])];
+    const out = { ...r, graded: r.graded || !!g?.graded || g?.grade !== undefined, flags, review };
+    if (g?.grade !== undefined) out.manualGrade = g.grade;
+    if (hasEdits(g)) out.edited = true;
+    if (g?.checked) out.checked = true;
+    return out;
+  });
+  return { results, comments: table };
+}
+
+function gradeOf(r) {
+  if (!r.graded) return null;
+  if (r.manualGrade !== undefined) return r.manualGrade;
+  return Math.max(0, 100 - r.flags.reduce((sum, f) => sum + f.points, 0));
+}
+
+function pointsLabel(c) {
+  if (!c.perUnit) return c.points;
+  return `${c.points} לכל פריט` + (c.max === undefined ? '' : ` (עד ${c.max})`);
+}
+
+/* =====================================================================================
+   State, edits and undo
+   ===================================================================================== */
+
+const state = {
+  base: null, edits: null, view: null, fileName: '',
+  query: '', sort: 'group', filter: 'all', openName: null,
+  poolSort: { key: 'no', dir: 1 },
+  undo: [], redo: [], saved: '', projectDir: null,
+};
+
+const editsJson = () => JSON.stringify(prune(structuredClone(state.edits)), null, 2) + '\n';
+const isDirty = () => state.base && editsJson() !== state.saved;
+
+/** Drops empty objects, so the file only holds real edits. */
+function prune(edits) {
+  for (const [no, c] of Object.entries(edits.comments ?? {})) {
+    if (c.text === undefined && c.points === undefined) delete edits.comments[no];
+  }
+  for (const [name, g] of Object.entries(edits.groups ?? {})) {
+    for (const [no, f] of Object.entries(g.flags ?? {})) {
+      if (f && f.points === undefined && f.detail === undefined && isAutomatic(name, Number(no))) delete g.flags[no];
+    }
+    if (g.flags && !Object.keys(g.flags).length) delete g.flags;
+    if (g.dismissed && !g.dismissed.length) delete g.dismissed;
+    if (g.notes && !g.notes.length) delete g.notes;
+    if (!g.graded) delete g.graded;
+    if (!g.checked) delete g.checked;
+    if (!Object.keys(g).length) delete edits.groups[name];
+  }
+  if (edits.comments && !Object.keys(edits.comments).length) delete edits.comments;
+  if (edits.groups && !Object.keys(edits.groups).length) delete edits.groups;
+  return edits;
+}
+
+function automaticOf(name) {
+  return state.base.results.find((r) => nameOf(r) === name);
+}
+function isAutomatic(name, no) {
+  return !!automaticOf(name)?.flags.some((f) => f.no === no);
+}
+
+/** Every change goes through here: one undo step, then the affected parts are drawn again. */
+function commit(change, { render = 'all', name } = {}) {
+  const before = JSON.stringify(state.edits);
+  change(state.edits);
+  prune(state.edits);
+  if (JSON.stringify(state.edits) === before) return;
+  state.undo.push(before);
+  if (state.undo.length > 300) state.undo.shift();
+  state.redo = [];
+  afterChange(render, name);
+}
+
+function afterChange(render, name) {
+  state.view = buildView();
+  saveDraft();
+  updateChrome();
+  if (render === 'item' && name) scheduleRender(() => renderItem(name));
+  else scheduleRender(renderList);
+  if (poolDialog.open) scheduleRender(renderPool);
+}
+
+function undo() {
+  if (!state.undo.length) return;
+  state.redo.push(JSON.stringify(state.edits));
+  state.edits = JSON.parse(state.undo.pop());
+  afterChange('all');
+}
+function redo() {
+  if (!state.redo.length) return;
+  state.undo.push(JSON.stringify(state.edits));
+  state.edits = JSON.parse(state.redo.pop());
+  afterChange('all');
+}
+
+const groupEdits = (edits, name) => ((edits.groups ??= {})[name] ??= {});
+const flagEdits = (edits, name, no) => {
+  const g = groupEdits(edits, name);
+  g.flags ??= {};
+  if (!g.flags[no]) g.flags[no] = {};
+  return g.flags[no];
+};
+
+/** The value a comment of a group has without an own hand value. */
+function flagDefault(name, no) {
+  const auto = automaticOf(name)?.flags.find((f) => f.no === no);
+  const comment = state.view.comments.find((c) => c.no === no);
+  if (auto) {
+    const tablePoints = comment && !comment.perUnit ? state.edits.comments?.[no]?.points : undefined;
+    return { points: tablePoints ?? auto.points, detail: auto.detail ?? '' };
+  }
+  return { points: comment?.points ?? 0, detail: '' };
+}
+
+const ops = {
+  setPoints(name, no, points) {
+    commit((e) => {
+      const f = flagEdits(e, name, no);
+      if (points === flagDefault(name, no).points) delete f.points;
+      else f.points = points;
+    }, { render: 'item', name });
+  },
+  setDetail(name, no, detail) {
+    commit((e) => {
+      const f = flagEdits(e, name, no);
+      if (detail === flagDefault(name, no).detail) delete f.detail;
+      else f.detail = detail;
+    }, { render: 'item', name });
+  },
+  remove(name, no) {
+    commit((e) => {
+      const g = groupEdits(e, name);
+      if (isAutomatic(name, no)) (g.flags ??= {})[no] = null;
+      else delete g.flags?.[no];
+    }, { render: 'item', name });
+  },
+  restore(name, no) {
+    commit((e) => { delete groupEdits(e, name).flags?.[no]; }, { render: 'item', name });
+  },
+  add(name, no) {
+    commit((e) => {
+      const g = groupEdits(e, name);
+      if (isAutomatic(name, no)) delete g.flags?.[no];
+      else (g.flags ??= {})[no] ??= {};
+    }, { render: 'item', name });
+  },
+  addNew(name, text, points) {
+    commit((e) => {
+      const no = nextManualNo(e);
+      (e.comments ??= {})[no] = { text, points };
+      ((groupEdits(e, name).flags ??= {})[no] = {});
+    });
+  },
+  setGrade(name, grade) {
+    commit((e) => {
+      const g = groupEdits(e, name);
+      if (grade === undefined) delete g.grade;
+      else g.grade = grade;
+    }, { render: 'item', name });
+  },
+  setGraded(name) {
+    commit((e) => { groupEdits(e, name).graded = true; }, { render: 'item', name });
+  },
+  dismiss(name, reason, on) {
+    commit((e) => {
+      const g = groupEdits(e, name);
+      g.dismissed = (g.dismissed ?? []).filter((r) => r !== reason);
+      if (on) g.dismissed.push(reason);
+    }, { render: 'item', name });
+  },
+  dismissAll(name) {
+    commit((e) => {
+      const g = groupEdits(e, name);
+      g.dismissed = [...new Set([...(g.dismissed ?? []), ...automaticOf(name).review])];
+      delete g.notes;
+    }, { render: 'item', name });
+  },
+  addNote(name, note) {
+    commit((e) => { (groupEdits(e, name).notes ??= []).push(note); }, { render: 'item', name });
+  },
+  removeNote(name, index) {
+    commit((e) => { groupEdits(e, name).notes?.splice(index, 1); }, { render: 'item', name });
+  },
+  resetGroup(name) {
+    commit((e) => {
+      // The "checked" mark is a status, not an edit: it stays.
+      const checked = e.groups?.[name]?.checked;
+      delete e.groups?.[name];
+      if (checked) groupEdits(e, name).checked = true;
+    }, { render: 'item', name });
+  },
+  setChecked(name, on) {
+    commit((e) => {
+      const g = groupEdits(e, name);
+      if (on) g.checked = true;
+      else delete g.checked;
+    }, { render: 'item', name });
+  },
+  setCommentText(no, text) {
+    commit((e) => {
+      const base = state.base.comments.find((c) => c.no === no);
+      const c = ((e.comments ??= {})[no] ??= {});
+      if (base && text === base.text) delete c.text;
+      else c.text = text;
+    });
+  },
+  setCommentPoints(no, points) {
+    commit((e) => {
+      const base = state.base.comments.find((c) => c.no === no);
+      const c = ((e.comments ??= {})[no] ??= {});
+      if (base && points === base.points) delete c.points;
+      else c.points = points;
+    });
+  },
+  resetComment(no) {
+    commit((e) => { delete e.comments?.[no]; });
+  },
+  addComment(text, points) {
+    let no;
+    commit((e) => {
+      no = nextManualNo(e);
+      (e.comments ??= {})[no] = { text, points };
+    });
+    return no;
+  },
+  deleteComment(no) {
+    commit((e) => {
+      delete e.comments?.[no];
+      for (const g of Object.values(e.groups ?? {})) delete g.flags?.[no];
+    });
+  },
+};
+
+function nextManualNo(edits) {
+  const used = [...state.base.comments.map((c) => c.no), ...Object.keys(edits.comments ?? {}).map(Number)];
+  return Math.max(FIRST_MANUAL_NO - 1, ...used.filter((n) => n >= FIRST_MANUAL_NO)) + 1;
+}
+
+/* =====================================================================================
+   View model
+   ===================================================================================== */
+
+function buildView() {
+  const { results, comments } = applyEdits(state.base, state.edits);
+  const groups = results.map((r) => {
+    const name = nameOf(r);
+    const auto = automaticOf(name);
+    const ge = state.edits.groups?.[name];
+    const removed = auto.flags.filter((f) => ge?.flags?.[f.no] === null);
+    const students = r.group ? (r.students ?? []) : [r.id];
+    const deducted = r.flags.reduce((sum, f) => sum + f.points, 0);
+    return {
+      name, r, auto, ge, removed, students, deducted,
+      grade: gradeOf(r),
+      needsReview: !r.graded || r.review.length > 0,
+      edited: !!r.edited,
+      checked: !!r.checked,
+      haystack: [name, ...students, ...r.flags.flatMap((f) => [f.text, f.detail ?? '']), ...r.review].join('\n').toLowerCase(),
+    };
+  });
+  const uses = new Map();
+  for (const g of groups) for (const f of g.r.flags) uses.set(f.no, (uses.get(f.no) ?? 0) + 1);
+  return { groups, comments, uses, byName: new Map(groups.map((g) => [g.name, g])) };
+}
+
+/* =====================================================================================
+   Rendering helpers
+   ===================================================================================== */
+
+const $ = (id) => document.getElementById(id);
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key === 'class') node.className = value;
+    else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
+    else if (key === 'value') node.value = value;
+    else node.setAttribute(key, value === true ? '' : value);
+  }
+  node.append(...children.flat().filter((child) => child !== null && child !== undefined && child !== false));
+  return node;
+}
+const num = (text, cls = '') => el('span', { class: `num ${cls}`.trim() }, String(text));
+const plural = (n, one, many) => (n === 1 ? one : `${n} ${many}`);
+const fmt = (n) => String(Math.round(n * 100) / 100);
+
+const ICONS = {
+  chevron: 'M5 7.5l5 5 5-5',
+  x: 'M5 5l10 10M15 5L5 15',
+  trash: 'M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10',
+  undo: 'M8 5L4 9l4 4M4 9h8a4 4 0 010 8h-2',
+  redo: 'M12 5l4 4-4 4M16 9H8a4 4 0 000 8h2',
+  reset: 'M4 10a6 6 0 106-6H7M7 1L4 4l3 3',
+  copy: 'M7 7h9v9H7zM4 13V4h9',
+  plus: 'M10 4v12M4 10h12',
+  check: 'M4 10l4 4 8-8',
+  download: 'M10 3v10M6 9l4 4 4-4M4 16h12',
+};
+function icon(name, cls) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('aria-hidden', 'true');
+  if (cls) svg.setAttribute('class', cls);
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', ICONS[name]);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.8');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.append(path);
+  return svg;
+}
+
+/** Reads a number field: undefined when empty or invalid. */
+function numberValue(input, max = Infinity) {
+  if (input.value.trim() === '') return undefined;
+  const n = Number(input.value);
+  return Number.isFinite(n) && n >= 0 && n <= max ? n : NaN;
+}
+
+/** Renders are deferred a tick, so a change event that moves the focus (Tab) is finished first. */
+const pending = new Set();
+function scheduleRender(fn) {
+  if (!pending.size) setTimeout(() => {
+    const fns = [...pending];
+    pending.clear();
+    if (fns.includes(renderList)) fns.splice(0, fns.length, ...fns.filter((f) => f === renderList || f === renderPool));
+    for (const f of fns) f();
+  });
+  pending.add(fn);
+}
+
+/** Replaces a node, keeping the focus on the field with the same data-k (and its caret). */
+function swap(old, next) {
+  const active = document.activeElement;
+  const k = old.contains(active) ? active.dataset?.k : undefined;
+  const caret = k && 'selectionStart' in active ? [active.selectionStart, active.selectionEnd] : null;
+  old.replaceWith(next);
+  if (!k) return;
+  const target = next.querySelector(`[data-k="${CSS.escape(k)}"]`);
+  if (!target) return;
+  target.focus({ preventScroll: true });
+  try { if (caret) target.setSelectionRange(...caret); } catch { /* number fields have no caret */ }
+}
+
+function toast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => (t.hidden = true), 2600);
+}
+
+/* =====================================================================================
+   List and rows
+   ===================================================================================== */
+
+function gradeClass(grade) {
+  if (grade === null) return '';
+  return grade >= 90 ? 'good' : grade >= 70 ? 'mid' : 'low';
+}
+
+function visibleGroups() {
+  const query = state.query.trim().toLowerCase();
+  const commentNo = /^#\s*(\d+)$/.exec(query)?.[1];
+  const list = state.view.groups.filter((g) => {
+    if (state.filter === 'deduct' && !g.deducted) return false;
+    if (state.filter === 'review' && !g.needsReview) return false;
+    if (state.filter === 'edited' && !g.edited) return false;
+    if (state.filter === 'checked' && !g.checked) return false;
+    if (state.filter === 'unchecked' && g.checked) return false;
+    if (!query) return true;
+    if (commentNo) return g.r.flags.some((f) => f.no === Number(commentNo));
+    return g.haystack.includes(query);
+  });
+  const byName = (a, b) => a.name.localeCompare(b.name, 'he', { numeric: true });
+  if (state.sort === 'group') return list.sort(byName);
+  // Ungraded groups come first when looking for low grades, last otherwise.
+  const sign = state.sort === 'asc' ? 1 : -1;
+  return list.sort((a, b) => sign * ((a.grade ?? -1) - (b.grade ?? -1)) || byName(a, b));
+}
+
+const itemNodes = new Map();
+
+function renderList() {
+  const groups = visibleGroups();
+  const total = state.view.groups.length;
+  $('count').textContent = groups.length === total ? `${total} קבוצות` : `מוצגות ${groups.length} מתוך ${total} קבוצות`;
+  itemNodes.clear();
+  const nodes = groups.map((g, i) => {
+    const node = groupItem(g, i);
+    itemNodes.set(g.name, node);
+    return node;
+  });
+  const list = $('list');
+  const fresh = el('div', { class: 'list', id: 'list' }, nodes.length ? nodes : el('div', { class: 'empty' }, 'אין קבוצות שמתאימות לחיפוש.'));
+  swap(list, fresh);
+  renderStats();
+}
+
+function renderItem(name) {
+  const old = itemNodes.get(name);
+  const g = state.view.byName.get(name);
+  if (!old || !g || !old.isConnected) return renderList();
+  const next = groupItem(g, Number(old.dataset.index));
+  itemNodes.set(name, next);
+  swap(old, next);
+  renderStats();
+}
+
+function renderStats() {
+  const groups = state.view.groups;
+  const graded = groups.filter((g) => g.grade !== null);
+  const average = graded.length ? (graded.reduce((sum, g) => sum + g.grade, 0) / graded.length).toFixed(1) : '–';
+  const stat = (value, label) => el('div', { class: 'stat' }, el('b', { class: 'num' }, String(value)), el('span', {}, label));
+  $('stats').replaceChildren(
+    stat(groups.length, 'קבוצות'),
+    stat(groups.reduce((sum, g) => sum + (g.students.length || 1), 0), 'סטודנטים'),
+    stat(average, 'ציון ממוצע'),
+    stat(groups.filter((g) => g.needsReview).length, REVIEW),
+    stat(groups.filter((g) => g.edited).length, 'נערכו ידנית'),
+    stat(`${groups.filter((g) => g.checked).length}/${groups.length}`, 'נבדקו'));
+}
+
+function groupItem(g, index) {
+  const open = state.openName === g.name;
+  const panelId = `panel-${index}`;
+  const comments = g.r.flags.length;
+  const head = el('button', { class: 'head', type: 'button', 'aria-expanded': String(open), 'aria-controls': panelId, 'data-k': 'head' },
+    el('span', { class: 'who' },
+      el('span', { class: 'name' }, el('span', { dir: 'auto' }, g.name),
+        g.checked ? el('span', { class: 'tag done' }, 'נבדק') : null,
+        g.needsReview ? el('span', { class: 'tag' }, REVIEW) : null,
+        g.edited ? el('span', { class: 'tag edit' }, 'נערך') : null),
+      g.students.length ? el('span', { class: 'ids num' }, g.students.join(' · ')) : null),
+    el('span', { class: 'brief' },
+      comments ? plural(comments, 'הערה אחת', 'הערות') : 'ללא הערות',
+      g.deducted ? ' · ' : null,
+      g.deducted ? num(`−${fmt(g.deducted)}`, 'minus') : null),
+    el('span', { class: 'end' },
+      num(g.grade ?? '–', `grade ${gradeClass(g.grade)} ${g.r.manualGrade !== undefined ? 'manual' : ''}`),
+      icon('chevron', 'chev')));
+
+  // The body is built only for open rows: closed rows stay cheap.
+  const inner = el('div', { class: 'inner' }, open ? groupBody(g) : null);
+  inner.inert = !open;
+  const check = el('button', {
+    class: 'check', type: 'button', 'data-k': 'check', 'aria-pressed': String(g.checked),
+    title: g.checked ? 'ביטול הסימון "נבדק"' : 'סימון כנבדק', 'aria-label': `${g.name}: נבדק`,
+    onclick: () => ops.setChecked(g.name, !g.checked),
+  }, el('span', { class: 'box' }, icon('check')));
+  const item = el('div', { class: `item ${open ? 'open' : ''} ${g.checked ? 'checked' : ''}`, 'data-index': String(index) },
+    el('div', { class: 'item-head' }, check, head),
+    el('div', { class: 'panel', id: panelId, role: 'region', 'aria-label': `הערות של ${g.name}` }, inner));
+  head.addEventListener('click', () => setOpen(state.openName === g.name ? null : g.name));
+  return item;
+}
+
+/** Opens one row (closing the one that was open), or closes all with null. */
+function setOpen(name) {
+  const previous = state.openName;
+  state.openName = name;
+  for (const [n, on] of [[previous, false], [name, true]]) {
+    const node = n && itemNodes.get(n);
+    if (!node?.isConnected) continue;
+    const inner = node.querySelector('.inner');
+    if (on && !inner.firstChild) inner.append(groupBody(state.view.byName.get(n)));
+    node.classList.toggle('open', on);
+    node.querySelector('.head').setAttribute('aria-expanded', String(on));
+    inner.inert = !on;
+  }
+  // Closing a row above moves the opened one up: keep its header on screen.
+  const head = name && itemNodes.get(name)?.querySelector('.head');
+  if (head) setTimeout(() => {
+    const top = head.getBoundingClientRect().top;
+    if (top < 0 || top > innerHeight - 80) head.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, 260);
+}
+
+/** Marks a group as checked and opens the next visible group that isn't. */
+function checkAndNext(name) {
+  const order = visibleGroups().map((g) => g.name);
+  const at = order.indexOf(name);
+  const next = [...order.slice(at + 1), ...order.slice(0, at)].find((n) => n !== name && !state.view.byName.get(n)?.checked);
+  ops.setChecked(name, true);
+  scheduleRender(() => setOpen(next ?? null));
+}
+
+function groupBody(g) {
+  const body = el('div', { class: 'body' });
+  const reviewBox = reviewSection(g);
+  if (reviewBox) body.append(reviewBox);
+
+  const rows = [
+    ...g.r.flags.map((f) => flagRow(g, f)),
+    ...g.removed.map((f) => removedRow(g, f)),
+  ];
+  if (rows.length) body.append(el('ul', { class: 'flags' }, rows));
+  else if (g.r.graded) body.append(el('p', { class: 'clean' }, 'לא נמצאו הערות.'));
+
+  body.append(adder(g));
+  body.append(gradeLine(g));
+  body.append(el('div', { class: 'group-actions' },
+    g.checked ? null : el('button', { class: 'btn small primary', type: 'button', 'data-k': 'check-next', onclick: () => checkAndNext(g.name) }, icon('check'), 'סימון כנבדק ומעבר לקבוצה הבאה'),
+    el('button', { class: 'btn small ghost', type: 'button', 'data-k': 'copy', onclick: () => copyFeedback(g) }, icon('copy'), 'העתקת משוב לסטודנט'),
+    g.edited ? el('button', { class: 'btn small ghost danger', type: 'button', 'data-k': 'reset', onclick: () => ops.resetGroup(g.name) }, icon('reset'), 'שחזור לבדיקה האוטומטית') : null));
+  return body;
+}
+
+function reviewSection(g) {
+  const automatic = g.auto.review;
+  const dismissed = g.ge?.dismissed ?? [];
+  const notes = g.ge?.notes ?? [];
+  const open = automatic.filter((r) => !dismissed.includes(r));
+  const ungraded = !g.r.graded;
+  if (!automatic.length && !notes.length && !ungraded) {
+    return el('details', { class: 'reviews', style: 'background: none; padding: 0; color: var(--muted)' },
+      el('summary', { style: 'cursor: pointer; font-size: 14px' }, 'הוספת הערה לבודק'),
+      noteRow(g));
+  }
+  return el('div', { class: 'reviews' },
+    el('strong', {}, ungraded ? 'לא נוצר ציון אוטומטי' : open.length || notes.length ? REVIEW : 'הבדיקה הידנית הושלמה'),
+    el('ul', {},
+      automatic.map((reason, i) => {
+        const done = dismissed.includes(reason);
+        return el('li', { class: done ? 'done' : '' },
+          el('span', { dir: 'auto' }, reason),
+          el('button', { class: 'btn small', type: 'button', 'data-k': `rv-${i}`, onclick: () => ops.dismiss(g.name, reason, !done) },
+            done ? 'החזרה' : [icon('check'), 'טופל']));
+      }),
+      notes.map((note, i) => el('li', {},
+        el('span', { dir: 'auto' }, el('span', { class: 'note-tag' }, 'הערת בודק:'), note),
+        el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'מחיקת ההערה', 'data-k': `note-${i}`, onclick: () => ops.removeNote(g.name, i) }, icon('x'))))),
+    noteRow(g),
+    el('div', { class: 'review-actions' },
+      ungraded ? el('button', { class: 'btn small', type: 'button', 'data-k': 'graded', onclick: () => ops.setGraded(g.name) }, 'קביעת ציון לפי ההערות') : null,
+      open.length + notes.length > 1 || (open.length && notes.length) ? el('button', { class: 'btn small', type: 'button', 'data-k': 'all-done', onclick: () => ops.dismissAll(g.name) }, icon('check'), 'סימון הכול כנבדק') : null));
+}
+
+function noteRow(g) {
+  const input = el('input', { class: 'field', 'data-k': 'note', placeholder: 'הערה לבודק (לא מופיעה במשוב לסטודנט)', 'aria-label': 'הערה לבודק' });
+  const add = () => {
+    const note = input.value.trim();
+    if (note) ops.addNote(g.name, note);
+  };
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+  return el('div', { class: 'note-row', style: 'margin-top: 6px' }, input,
+    el('button', { class: 'btn small', type: 'button', onclick: add }, 'הוספה'));
+}
+
+function flagRow(g, f) {
+  const auto = g.auto.flags.find((a) => a.no === f.no);
+  const own = g.ge?.flags?.[f.no];
+  const comment = state.view.comments.find((c) => c.no === f.no);
+  const changed = !auto || own?.points !== undefined || own?.detail !== undefined;
+  const points = el('input', { type: 'number', min: '0', step: 'any', class: 'num', value: fmt(f.points), 'data-k': `pts-${f.no}`, 'aria-label': `הורדה בהערה ${f.no}` });
+  points.addEventListener('change', () => {
+    const value = numberValue(points);
+    if (value === undefined || Number.isNaN(value)) { points.value = fmt(f.points); return; }
+    ops.setPoints(g.name, f.no, value);
+  });
+  const detail = el('textarea', { class: 'detail', rows: '1', 'data-k': `detail-${f.no}`, placeholder: 'פירוט (לא חובה)', 'aria-label': `פירוט להערה ${f.no}`, value: f.detail ?? '' });
+  detail.addEventListener('change', () => ops.setDetail(g.name, f.no, detail.value.trim()));
+  detail.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); detail.blur(); } });
+  const marks = [];
+  if (!auto) marks.push('נוספה ידנית');
+  else if (own?.points !== undefined && own.points !== auto.points) marks.push(['במקור ', num(`−${fmt(auto.points)}`)]);
+  if (comment?.perUnit && comment.points) marks.push(`${fmt(comment.points)} לכל פריט${comment.max !== undefined ? `, עד ${fmt(comment.max)}` : ''}`);
+  return el('li', { class: `flag ${f.points ? '' : 'note'} ${changed ? 'changed' : ''}` },
+    num(f.no, 'no'),
+    el('div', { class: 'text' }, el('span', {}, f.text), marks.map((m) => el('span', { class: 'mark' }, m)), detail),
+    el('label', { class: 'pts-field' }, '−', points),
+    el('button', { class: 'icon-btn danger', type: 'button', title: 'הסרת ההערה', 'aria-label': `הסרת הערה ${f.no}`, 'data-k': `toggle-${f.no}`, onclick: () => ops.remove(g.name, f.no) }, icon('trash')));
+}
+
+function removedRow(g, f) {
+  return el('li', { class: 'flag removed' },
+    num(f.no, 'no'),
+    el('div', { class: 'text' }, el('span', {}, state.view.comments.find((c) => c.no === f.no)?.text ?? f.text), el('span', { class: 'mark' }, 'הוסרה')),
+    el('span', { class: 'gone num' }, `−${fmt(f.points)}`),
+    el('button', { class: 'btn small', type: 'button', 'data-k': `toggle-${f.no}`, onclick: () => ops.restore(g.name, f.no) }, 'החזרה'));
+}
+
+/** "Add a comment": search the comments table by number or text, or write a new comment. */
+function adder(g) {
+  const wrap = el('div', { class: 'adder' });
+  const input = el('input', { class: 'field', 'data-k': 'add', placeholder: '+ הוספת הערה: מספר או חיפוש בטקסט', 'aria-label': 'הוספת הערה', role: 'combobox', 'aria-expanded': 'false', autocomplete: 'off' });
+  const list = el('ul', { class: 'options', role: 'listbox', hidden: true });
+  let options = [];
+  let active = 0;
+  const have = new Set(g.r.flags.map((f) => f.no));
+
+  const choose = (option) => {
+    if (!option) return;
+    if (option.no !== undefined) ops.add(g.name, option.no);
+    else showNewForm(option.text);
+  };
+  const showNewForm = (text) => {
+    const textInput = el('input', { class: 'field', value: text, required: true, 'data-k': 'new-text', 'aria-label': 'תוכן ההערה' });
+    const ptsInput = el('input', { class: 'field num', type: 'number', min: '0', step: 'any', value: '1', required: true, 'data-k': 'new-pts', 'aria-label': 'הורדה' });
+    const form = el('form', { class: 'new-comment' },
+      el('label', {}, 'הערה חדשה (תתווסף גם לטבלת ההערות)', textInput),
+      el('label', {}, 'הורדה', ptsInput),
+      el('button', { class: 'btn primary small', type: 'submit' }, 'הוספה'),
+      el('button', { class: 'btn small ghost', type: 'button', onclick: () => form.replaceWith(wrap) }, 'ביטול'));
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const points = numberValue(ptsInput);
+      if (!textInput.value.trim() || points === undefined || Number.isNaN(points)) return;
+      ops.addNew(g.name, textInput.value.trim(), points);
+    });
+    wrap.replaceWith(form);
+    textInput.focus();
+    textInput.select();
+  };
+  const show = () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) { list.hidden = true; input.setAttribute('aria-expanded', 'false'); return; }
+    const exact = /^#?\d+$/.test(q) ? Number(q.replace('#', '')) : null;
+    options = state.view.comments
+      .filter((c) => !have.has(c.no) && (exact !== null ? String(c.no).startsWith(String(exact)) : c.text.toLowerCase().includes(q)))
+      .sort((a, b) => (exact !== null ? (a.no === exact ? -1 : b.no === exact ? 1 : a.no - b.no) : a.no - b.no))
+      .slice(0, 12);
+    if (exact === null) options.push({ text: input.value.trim() });
+    active = 0;
+    list.replaceChildren(...options.map((o, i) => el('li', { role: 'option' },
+      el('button', { type: 'button', tabindex: '-1', class: `${o.no === undefined ? 'o-new' : ''} ${i === active ? 'active' : ''}`, onmousedown: (e) => e.preventDefault(), onclick: () => choose(o) },
+        o.no === undefined ? `+ הערה חדשה: "${o.text}"` : [el('span', { class: 'o-no num' }, String(o.no)), el('span', {}, o.text), el('span', { class: 'o-pts num' }, o.perUnit ? `${fmt(o.points)} לפריט` : `−${fmt(o.points)}`)]))));
+    if (!options.length) list.append(el('li', { style: 'padding: 8px 10px; color: var(--muted); font-size: 14px' }, 'אין הערה כזו (או שהיא כבר קיימת בקבוצה)'));
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  };
+  const highlight = (i) => {
+    active = (i + options.length) % options.length;
+    [...list.querySelectorAll('button')].forEach((b, j) => b.classList.toggle('active', j === active));
+    list.querySelectorAll('button')[active]?.scrollIntoView({ block: 'nearest' });
+  };
+  input.addEventListener('input', show);
+  input.addEventListener('focus', show);
+  input.addEventListener('blur', () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' && options.length) { e.preventDefault(); highlight(active + 1); }
+    else if (e.key === 'ArrowUp' && options.length) { e.preventDefault(); highlight(active - 1); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (!list.hidden) choose(options[active]); }
+    else if (e.key === 'Escape') { input.value = ''; show(); }
+  });
+  wrap.append(input, list);
+  return wrap;
+}
+
+function gradeLine(g) {
+  const manual = g.r.manualGrade !== undefined;
+  const computed = Math.max(0, 100 - g.deducted);
+  const input = el('input', { class: `field num ${manual ? 'manual' : ''}`, type: 'number', min: '0', max: '100', step: 'any', 'data-k': 'grade', 'aria-label': 'ציון', value: g.grade === null ? '' : fmt(g.grade), placeholder: g.r.graded ? fmt(computed) : '–' });
+  input.addEventListener('change', () => {
+    const value = numberValue(input, 100);
+    if (Number.isNaN(value)) { input.value = g.grade === null ? '' : fmt(g.grade); return; }
+    if (value === undefined) return ops.setGrade(g.name, undefined);
+    // Typing the computed grade on a graded group means "follow the deductions".
+    ops.setGrade(g.name, g.r.graded && !manual && value === computed ? undefined : value);
+  });
+  return el('div', { class: 'total' },
+    el('span', {}, 'סך ההורדות: ', el('b', {}, num(fmt(g.deducted)))),
+    el('span', { class: 'grade-edit' },
+      el('span', { class: 'formula' }, manual ? el('span', { class: 'tag edit' }, 'ציון ידני') : g.r.graded ? num(`100 − ${fmt(g.deducted)} =`) : 'ציון:'),
+      input,
+      manual ? el('button', { class: 'btn small ghost', type: 'button', 'data-k': 'grade-auto', onclick: () => ops.setGrade(g.name, undefined) }, `חזרה לחישוב (${fmt(computed)})`) : null));
+}
+
+/** The student's feedback text, as in feedback/<id>.txt (grader/output.ts). */
+function feedbackText(r) {
+  const grade = gradeOf(r);
+  const who = r.group ? [`קבוצה: ${r.group}`, `ת"ז: ${r.students?.join(', ') || '–'}`] : [`ת"ז: ${r.id}`];
+  const lines = [state.base.meta.title, ...who, `ציון: ${grade ?? 'ייקבע לאחר בדיקה ידנית'}`, ''];
+  if (r.flags.length) {
+    lines.push('הערות:');
+    for (const f of r.flags) {
+      const points = f.points ? `הורדה של ${fmt(f.points)} נק'` : f.text.includes('לא ירדו נקודות') ? '' : 'ללא הורדת נקודות';
+      lines.push(`• (${f.no}) ${f.text}${points ? ` – ${points}` : ''}`);
+      if (f.detail) lines.push(`    פירוט: ${f.detail}`);
+    }
+  } else if (grade !== null) {
+    lines.push('לא נמצאו הערות – כל הכבוד!');
+  }
+  return `${lines.join('\n').trimEnd()}\n`;
+}
+
+async function copyFeedback(g) {
+  const text = feedbackText(g.r);
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = el('textarea', { style: 'position: fixed; opacity: 0' }, text);
+    document.body.append(area);
+    area.select();
+    document.execCommand('copy');
+    area.remove();
+  }
+  toast(`המשוב של ${g.name} הועתק`);
+}
+
+/* =====================================================================================
+   Comment pool dialog
+   ===================================================================================== */
+
+const poolDialog = $('pool');
+
+function renderPool() {
+  const q = $('pool-search').value.trim().toLowerCase();
+  const onlyUsed = $('pool-used').checked;
+  const baseByNo = new Map(state.base.comments.map((c) => [c.no, c]));
+  const { key, dir } = state.poolSort;
+  const sortValue = { no: (c) => c.no, text: (c) => c.text, points: (c) => c.points, uses: (c) => state.view.uses.get(c.no) ?? 0 }[key];
+  const compare = (a, b) => {
+    const x = sortValue(a), y = sortValue(b);
+    return dir * (typeof x === 'string' ? x.localeCompare(y, 'he') : x - y) || a.no - b.no;
+  };
+  for (const th of $('pool-head').querySelectorAll('th[data-sort]')) {
+    if (th.dataset.sort === key) th.setAttribute('aria-sort', dir > 0 ? 'ascending' : 'descending');
+    else th.removeAttribute('aria-sort');
+  }
+  const rows = state.view.comments.filter((c) => {
+    if (onlyUsed && !state.view.uses.get(c.no)) return false;
+    if (!q) return true;
+    return /^#?\d+$/.test(q) ? String(c.no).startsWith(q.replace('#', '')) : c.text.toLowerCase().includes(q);
+  }).sort(compare).map((c) => {
+    const base = baseByNo.get(c.no);
+    const edit = state.edits.comments?.[c.no];
+    const changed = !base || edit?.text !== undefined || edit?.points !== undefined;
+    const uses = state.view.uses.get(c.no) ?? 0;
+    const text = el('textarea', { class: 'field', rows: '1', 'data-k': `ct-${c.no}`, 'aria-label': `תוכן הערה ${c.no}`, value: c.text });
+    text.addEventListener('change', () => {
+      const value = text.value.trim();
+      if (!value) { text.value = c.text; return; }
+      ops.setCommentText(c.no, value);
+    });
+    text.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); text.blur(); } });
+    let points;
+    if (c.perUnit) {
+      points = el('span', { class: 'label', title: 'הורדה לכל פריט: נקבעת בקוד, וניתן לשנות אותה בכל קבוצה' }, String(pointsLabel(c)));
+    } else {
+      points = el('input', { class: 'field num', type: 'number', min: '0', step: 'any', value: fmt(c.points), 'data-k': `cp-${c.no}`, 'aria-label': `הורדה בהערה ${c.no}` });
+      points.addEventListener('change', () => {
+        const value = numberValue(points);
+        if (value === undefined || Number.isNaN(value)) { points.value = fmt(c.points); return; }
+        ops.setCommentPoints(c.no, value);
+      });
+    }
+    const original = base && changed ? [
+      edit?.text !== undefined ? `במקור: ${base.text}` : null,
+      edit?.points !== undefined ? `הורדה במקור: ${fmt(base.points)}` : null,
+    ].filter(Boolean).join(' · ') : '';
+    return el('tr', { class: changed ? 'changed' : '' },
+      el('td', { class: 'c-no num' }, String(c.no)),
+      el('td', {}, text, original ? el('span', { class: 'orig' }, original) : null, !base ? el('span', { class: 'orig' }, 'נוספה ידנית') : null),
+      el('td', {}, points),
+      el('td', { class: 'uses' }, uses
+        ? el('button', { class: 'btn small ghost', type: 'button', title: 'הצגת הקבוצות', onclick: () => { showComment(c.no); } }, plural(uses, 'קבוצה אחת', 'קבוצות'))
+        : el('span', { class: 'label' }, '—')),
+      el('td', { class: 'row-actions' },
+        base && changed ? el('button', { class: 'icon-btn', type: 'button', title: 'החזרת הנוסח וההורדה המקוריים', 'aria-label': `שחזור הערה ${c.no}`, 'data-k': `cr-${c.no}`, onclick: () => ops.resetComment(c.no) }, icon('reset')) : null,
+        !base ? el('button', { class: 'icon-btn danger', type: 'button', title: 'מחיקה מהטבלה', 'aria-label': `מחיקת הערה ${c.no}`, onclick: () => {
+          if (uses && !confirm(`הערה ${c.no} תוסר גם מ-${plural(uses, 'קבוצה אחת', 'קבוצות')}. למחוק?`)) return;
+          ops.deleteComment(c.no);
+        } }, icon('trash')) : null));
+  });
+  const body = el('tbody', { id: 'pool-rows' }, rows.length ? rows : el('tr', {}, el('td', { colspan: '5', class: 'empty' }, 'אין הערות שמתאימות לחיפוש.')));
+  swap($('pool-rows'), body);
+}
+
+function showComment(no) {
+  poolDialog.close();
+  state.query = `#${no}`;
+  $('search').value = state.query;
+  setFilter('all');
+  renderList();
+}
+
+/* =====================================================================================
+   Writing grades.xlsx (same layout as writeWorkbook in grader/output.ts) and the edits file
+   ===================================================================================== */
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** A zip of stored (uncompressed) entries. */
+function zip(files) {
+  const encoder = new TextEncoder();
+  const now = new Date();
+  const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const [name, text] of files) {
+    const nameBytes = encoder.encode(name);
+    const data = encoder.encode(text);
+    const crc = crc32(data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(6, 0x0800, true);
+    local.setUint16(8, 0, true);
+    local.setUint16(10, time, true);
+    local.setUint16(12, date, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, data.length, true);
+    local.setUint32(22, data.length, true);
+    local.setUint16(26, nameBytes.length, true);
+    parts.push(local, nameBytes, data);
+    const entry = new DataView(new ArrayBuffer(46));
+    entry.setUint32(0, 0x02014b50, true);
+    entry.setUint16(4, 20, true);
+    entry.setUint16(6, 20, true);
+    entry.setUint16(8, 0x0800, true);
+    entry.setUint16(12, time, true);
+    entry.setUint16(14, date, true);
+    entry.setUint32(16, crc, true);
+    entry.setUint32(20, data.length, true);
+    entry.setUint32(24, data.length, true);
+    entry.setUint16(28, nameBytes.length, true);
+    entry.setUint32(42, offset, true);
+    central.push(entry, nameBytes);
+    offset += 30 + nameBytes.length + data.length;
+  }
+  const size = central.reduce((n, p) => n + p.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, files.length, true);
+  end.setUint16(10, files.length, true);
+  end.setUint32(12, size, true);
+  end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+const xml = (text) => String(text).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '')
+  .replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+const columnLetter = (i) => String.fromCharCode(65 + i);
+const idCell = (id) => (/^[1-9]\d*$/.test(id) && id.length < 16 ? Number(id) : id);
+
+/** A worksheet built cell by cell: set(row, col, value, style), with 1-based rows and 0-based columns. */
+function sheetBuilder() {
+  const rows = new Map();
+  return {
+    set(row, col, value, style = 0) {
+      if (value === null || value === undefined || value === '') { if (!style) return; }
+      if (!rows.has(row)) rows.set(row, new Map());
+      rows.get(row).set(col, { value, style });
+    },
+    xml({ widths, frozen, merges = [], selected = false }) {
+      const sheetRows = [...rows.keys()].sort((a, b) => a - b).map((r) => {
+        const cells = [...rows.get(r).entries()].sort((a, b) => a[0] - b[0]).map(([c, { value, style }]) => {
+          const ref = `${columnLetter(c)}${r}`;
+          const s = style ? ` s="${style}"` : '';
+          if (value === null || value === undefined || value === '') return `<c r="${ref}"${s}/>`;
+          if (typeof value === 'number') return `<c r="${ref}"${s}><v>${value}</v></c>`;
+          return `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`;
+        }).join('');
+        return `<row r="${r}">${cells}</row>`;
+      }).join('');
+      const pane = frozen ? `<pane ySplit="${frozen}" topLeftCell="A${frozen + 1}" activePane="bottomLeft" state="frozen"/>` : '';
+      const cols = widths ? `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
+      const merged = merges.length ? `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : '';
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"${selected ? ' tabSelected="1"' : ''}>${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>${cols}<sheetData>${sheetRows}</sheetData>${merged}</worksheet>`;
+    },
+  };
+}
+
+/** grades.xlsx rows of a result: one per student of a group (a group without IDs keeps one row under its name). */
+function gradeRows(r) {
+  if (!r.group) return [{ id: r.id, review: r.review }];
+  if (!r.students?.length) return [{ id: r.group, group: r.group, review: r.review }];
+  return r.students.map((id) => ({ id, group: r.group, review: r.review }));
+}
+
+function buildXlsx() {
+  const { meta } = state.base;
+  const { results, comments } = applyEdits(state.base, state.edits);
+  // Same order as the grader wrote them (sorted by ID in grader/reporter.ts).
+  const sorted = results;
+  const hasGroups = results.some((r) => r.group);
+  const BOLD_BIG = 1, BOLD = 2, WRAP = 3;
+
+  const main = sheetBuilder();
+  main.set(1, 0, meta.title, BOLD_BIG);
+  main.set(1, 1, null, BOLD_BIG);
+  main.set(1, 2, null, BOLD_BIG);
+  main.set(1, 6, `טבלת הערות – גרסה ${meta.commentsVersion}`, BOLD_BIG);
+  main.set(1, 7, null, BOLD_BIG);
+  main.set(1, 8, null, BOLD_BIG);
+  const headers = [[0, 'זהות'], [1, meta.gradeHeader], [2, 'מספרי הערות  (מתוך טבלת הערות בצד שמאל)'], [3, REVIEW], ...(hasGroups ? [[4, 'קבוצה']] : []), [6, 'מספר הערה'], [7, 'תוכן הערה'], [8, 'ניקוד להפחתה']];
+  for (const [col, text] of headers) main.set(2, col, text, BOLD);
+  const rows = sorted.flatMap((r) => gradeRows(r).map((g) => ({ r, g })));
+  rows.forEach(({ r, g }, i) => {
+    const row = 3 + i;
+    const numbers = r.flags.map((f) => f.no);
+    main.set(row, 0, idCell(g.id));
+    main.set(row, 1, gradeOf(r));
+    main.set(row, 2, numbers.length === 1 ? numbers[0] : numbers.join(','));
+    main.set(row, 3, g.review.join('; '), WRAP);
+    if (g.group) main.set(row, 4, g.group);
+  });
+  comments.forEach((c, i) => {
+    main.set(3 + i, 6, c.no);
+    main.set(3 + i, 7, c.text);
+    main.set(3 + i, 8, pointsLabel(c));
+  });
+
+  const details = sheetBuilder();
+  ['זהות', 'מספר הערה', 'תוכן הערה', 'ניקוד להפחתה', 'פירוט', ...(hasGroups ? ['קבוצה'] : [])].forEach((h, i) => details.set(1, i, h, BOLD));
+  let at = 2;
+  for (const { r, g } of rows) {
+    const group = g.group ? [g.group] : [];
+    for (const f of r.flags) [idCell(g.id), f.no, f.text, f.points, f.detail ?? '', ...group].forEach((v, i) => details.set(at, i, v)), at++;
+    for (const reason of g.review) [idCell(g.id), null, REVIEW, null, reason, ...group].forEach((v, i) => details.set(at, i, v)), at++;
+  }
+
+  const data = sheetBuilder();
+  let dataRow = 1;
+  const values = [['meta', meta], ['comments', state.base.comments], ['edits', prune(structuredClone(state.edits))], ...state.base.results.map((r) => [`result:${nameOf(r)}`, r])];
+  for (const [key, value] of values) {
+    const json = JSON.stringify(value);
+    for (let i = 0; i < json.length || i === 0; i += 30000) {
+      data.set(dataRow, 0, key);
+      data.set(dataRow, 1, json.slice(i, i + 30000));
+      dataRow++;
+    }
+  }
+
+  const sheets = [
+    [meta.sheetName, main.xml({ widths: [14, 12, 30, 50, hasGroups ? 11 : 4, 4, 11, 95, 18], frozen: 2, merges: ['A1:C1', 'G1:I1'], selected: true })],
+    [DETAILS_SHEET, details.xml({ widths: [14, 11, 70, 13, 90, ...(hasGroups ? [11] : [])], frozen: 1 })],
+    [DATA_SHEET, data.xml({}), true],
+  ];
+  const S = 'http://schemas.openxmlformats.org';
+  return workbook(sheets, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="${S}/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="12"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`);
+}
+
+/**
+ * The publish edition (grades_publish_template.xlsx): only the grades sheet, without the manual-review and
+ * group columns, styled like the course workbook. Nothing internal (details, review notes, grader-data) goes in it.
+ */
+function buildPublishXlsx() {
+  const { meta } = state.base;
+  const { results, comments } = applyEdits(state.base, state.edits);
+  const TITLE = 1, POOL_TITLE = 2, HEAD = 3, POOL_HEAD = 4, CENTER = 5, CENTER_WRAP = 6, RIGHT = 7, RIGHT_WRAP = 8;
+  const main = sheetBuilder();
+  main.set(1, 0, meta.title, TITLE);
+  main.set(1, 1, null, TITLE);
+  main.set(1, 2, null, TITLE);
+  main.set(1, 4, 'טבלת הערות', POOL_TITLE);
+  main.set(1, 5, null, POOL_TITLE);
+  main.set(1, 6, null, POOL_TITLE);
+  [[0, 'זהות'], [1, meta.gradeHeader], [2, 'מספרי הערות  (מתוך טבלת הערות בצד שמאל)']].forEach(([col, text]) => main.set(2, col, text, HEAD));
+  [[4, 'מספר הערה'], [5, 'תוכן הערה'], [6, 'ניקוד להפחתה']].forEach(([col, text]) => main.set(2, col, text, POOL_HEAD));
+  results.flatMap((r) => gradeRows(r).map((g) => ({ r, g }))).forEach(({ r, g }, i) => {
+    const numbers = r.flags.map((f) => f.no);
+    main.set(3 + i, 0, idCell(g.id), CENTER);
+    main.set(3 + i, 1, gradeOf(r), CENTER);
+    main.set(3 + i, 2, numbers.length === 1 ? numbers[0] : numbers.join(','), CENTER_WRAP);
+  });
+  comments.forEach((c, i) => {
+    main.set(3 + i, 4, c.no, RIGHT);
+    main.set(3 + i, 5, c.text, RIGHT_WRAP);
+    main.set(3 + i, 6, pointsLabel(c), RIGHT);
+  });
+  const S = 'http://schemas.openxmlformats.org';
+  const font = (size, bold) => `<font>${bold ? '<b/>' : ''}<sz val="${size}"/><name val="Arial"/><family val="2"/></font>`;
+  const fill = (rgb) => `<fill><patternFill patternType="solid"><fgColor rgb="${rgb}"/><bgColor indexed="64"/></patternFill></fill>`;
+  const thin = '<color rgb="FF000000"/>';
+  const align = (h, wrap, v) => `<alignment horizontal="${h}"${v ? ` vertical="${v}"` : ''}${wrap ? ' wrapText="1"' : ''}/>`;
+  const xf = (fontId, fillId, borderId, alignment) => `<xf numFmtId="0" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0" applyFont="1" applyFill="1" applyBorder="1"${alignment ? ` applyAlignment="1">${alignment}</xf>` : '/>'}`;
+  // fonts: 0 Arial 11, 1 Arial 12 bold, 2 Arial 16 bold, 3 Arial 11 bold. fills: 2 title, 3 pool title, 4 header, 5 pool header.
+  const xfs = [
+    xf(0, 0, 0),
+    xf(1, 2, 1, align('center', true, 'center')),
+    xf(2, 3, 1, align('center', true, 'center')),
+    xf(1, 4, 1, align('center', true, 'center')),
+    xf(3, 5, 1, align('center', true, 'center')),
+    xf(0, 0, 1, align('center')),
+    xf(0, 0, 1, align('center', true)),
+    xf(0, 0, 1, align('right')),
+    xf(0, 0, 1, align('right', true)),
+  ];
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="${S}/spreadsheetml/2006/main"><fonts count="4">${font(11)}${font(12, true)}${font(16, true)}${font(11, true)}</fonts><fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fill('FFD9D2E9')}${fill('FFF4CCCC')}${fill('FFFFF2CC')}${fill('FFFCE5CD')}</fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin">${thin}</left><right style="thin">${thin}</right><top style="thin">${thin}</top><bottom style="thin">${thin}</bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const sheet = main.xml({ widths: [14, 12, 57.86, 17.14, 17.14, 95, 18], frozen: 2, merges: ['A1:C1', 'E1:G1'], selected: true });
+  return workbook([[meta.sheetName, sheet]], styles);
+}
+
+/** An .xlsx of the given [name, sheet xml, hidden?] sheets and styles.xml. */
+function workbook(sheets, styles) {
+  const S = 'http://schemas.openxmlformats.org';
+  const files = [
+    ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="${S}/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="${S}/package/2006/relationships"><Relationship Id="rId1" Type="${S}/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="${S}/spreadsheetml/2006/main" xmlns:r="${S}/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets>${sheets.map(([name, , hidden], i) => `<sheet name="${xml(name)}" sheetId="${i + 1}"${hidden ? ' state="hidden"' : ''} r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="${S}/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="${S}/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="${S}/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml', styles],
+    ...sheets.map(([, content], i) => [`xl/worksheets/sheet${i + 1}.xml`, content]),
+  ];
+  return zip(files);
+}
+
+/* =====================================================================================
+   Saving: into the project folder (Chrome/Edge), or as downloads
+   ===================================================================================== */
+
+const IDB = { db: 'grades-viewer', store: 'handles' };
+function idb(mode, fn) {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open(IDB.db, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore(IDB.store);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const tx = open.result.transaction(IDB.store, mode);
+      const req = fn(tx.objectStore(IDB.store));
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    };
+  });
+}
+
+async function projectFolder() {
+  if (state.projectDir) return state.projectDir;
+  try { state.projectDir = (await idb('readonly', (s) => s.get('project'))) ?? null; } catch { /* no IndexedDB */ }
+  if (state.projectDir) return state.projectDir;
+  toast('בחרו את תיקיית הפרויקט (זו שבה נמצא package.json)');
+  const dir = await window.showDirectoryPicker({ id: 'grader-project', mode: 'readwrite' });
+  try {
+    await dir.getFileHandle('package.json');
+    await dir.getDirectoryHandle('exercises');
+  } catch {
+    throw new Error(`התיקייה "${dir.name}" אינה תיקיית הפרויקט: יש לבחור את התיקייה שבה נמצאים package.json ו-exercises.`);
+  }
+  state.projectDir = dir;
+  try { await idb('readwrite', (s) => s.put(dir, 'project')); } catch { /* remembered for this visit only */ }
+  return dir;
+}
+
+async function writeFile(root, parts, blob) {
+  let dir = root;
+  for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part, { create: true });
+  const file = await dir.getFileHandle(parts.at(-1), { create: true });
+  const writable = await file.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
+async function save() {
+  if (!state.base) return;
+  const ex = state.base.meta.exercise;
+  if (!('showDirectoryPicker' in window) || embedded) return download();
+  let root;
+  try {
+    root = await projectFolder();
+    if ((await root.queryPermission({ mode: 'readwrite' })) !== 'granted' && (await root.requestPermission({ mode: 'readwrite' })) !== 'granted') {
+      throw new Error('לא ניתנה הרשאה לכתוב בתיקיית הפרויקט.');
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+    return showError(`${error.message}\nאפשר להשתמש בכפתור "הורדה" במקום.`);
+  }
+  const edits = editsJson();
+  try {
+    await writeFile(root, ['manual-submissions', ex, 'grade-edits.json'], new Blob([edits], { type: 'application/json' }));
+  } catch (error) {
+    return showError(`שמירת manual-submissions/${ex}/grade-edits.json נכשלה: ${error.message}`);
+  }
+  let xlsxNote = '';
+  try {
+    await writeFile(root, ['results', ex, 'grades.xlsx'], buildXlsx());
+  } catch (error) {
+    xlsxNote = ` (grades.xlsx לא נשמר – אולי הוא פתוח ב-Excel: ${error.message})`;
+  }
+  markSaved(edits);
+  setStatus(`נשמר בתיקיית הפרויקט "${root.name}": manual-submissions/${ex}/grade-edits.json${xlsxNote ? '' : ` ו-results/${ex}/grades.xlsx`}. לעדכון שאר הדוחות: npm run report -- ${ex}${xlsxNote}`, !xlsxNote);
+}
+
+/**
+ * Downloads the updated grades.xlsx (hand edits applied). The workbook's hidden grader-data sheet carries the
+ * edits, so importing it again restores them; it doesn't update manual-submissions/<ex>/grade-edits.json,
+ * so the page is not marked as saved.
+ */
+function download() {
+  if (!state.base) return;
+  const ex = state.base.meta.exercise;
+  downloadBlob(buildXlsx(), 'grades.xlsx');
+  setStatus(`grades.xlsx הורד. להחלפת הקובץ בפרויקט העבירו אותו ל-results/${ex}/ (או השתמשו ב"שמירה" לכתיבה ישירה).`, true);
+}
+
+/** Downloads the publish edition: the grades sheet only, for the students (see buildPublishXlsx). */
+function downloadPublish() {
+  if (!state.base) return;
+  const name = `grades_publish_${state.base.meta.exercise}.xlsx`;
+  downloadBlob(buildPublishXlsx(), name);
+  setStatus(`${name} הורד (גרסה לפרסום: ציונים והערות בלבד, עם העריכות הידניות).`, true);
+}
+
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  if (embedded) $('embedded').hidden = false;
+}
+
+function markSaved(edits) {
+  state.saved = edits;
+  clearDraft();
+  updateChrome();
+}
+
+function setStatus(text, ok) {
+  const s = $('status');
+  s.textContent = text;
+  s.className = ok ? 'status ok' : 'status';
+  s.hidden = false;
+  showError('');
+}
+
+/* Draft in the browser, so a reload doesn't lose unsaved work. */
+const draftKey = () => `grades-viewer:draft:${state.base.meta.exercise}`;
+function signature(base) {
+  const text = JSON.stringify(base.results) + JSON.stringify(base.comments);
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (Math.imul(h, 31) + text.charCodeAt(i)) | 0;
+  return String(h);
+}
+function saveDraft() {
+  try {
+    if (isDirty()) localStorage.setItem(draftKey(), JSON.stringify({ sig: signature(state.base), edits: state.edits, at: Date.now() }));
+    else localStorage.removeItem(draftKey());
+  } catch { /* storage unavailable */ }
+}
+function clearDraft() {
+  try { localStorage.removeItem(draftKey()); } catch { /* storage unavailable */ }
+}
+function offerDraft() {
+  $('draft').hidden = true;
+  let draft;
+  try { draft = JSON.parse(localStorage.getItem(draftKey()) ?? 'null'); } catch { return; }
+  if (!draft || draft.sig !== signature(state.base)) return;
+  if (JSON.stringify(prune(structuredClone(draft.edits))) === JSON.stringify(prune(structuredClone(state.edits)))) return clearDraft();
+  const when = new Date(draft.at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' });
+  $('draft-text').textContent = `נמצאו שינויים שלא נשמרו מ-${when}.`;
+  $('draft').hidden = false;
+  $('draft-restore').onclick = () => {
+    state.undo.push(JSON.stringify(state.edits));
+    state.edits = normalizeEdits(draft.edits);
+    $('draft').hidden = true;
+    afterChange('all');
+  };
+  $('draft-drop').onclick = () => { clearDraft(); $('draft').hidden = true; };
+}
+
+/* =====================================================================================
+   Page chrome and events
+   ===================================================================================== */
+
+function updateChrome() {
+  $('undo').disabled = !state.undo.length;
+  $('redo').disabled = !state.redo.length;
+  const dirty = isDirty();
+  $('dirty').hidden = !dirty;
+  $('save').title = dirty ? 'יש שינויים שלא נשמרו (Ctrl+S)' : 'שמירה (Ctrl+S)';
+  const { meta } = state.base;
+  $('title').textContent = meta.title;
+  $('sub').textContent = [`טבלת הערות – גרסה ${meta.commentsVersion}`, state.fileName].filter(Boolean).join(' · ');
+  document.title = `${dirty ? '• ' : ''}${meta.title} – ציונים`;
+}
+
+function showError(message) {
+  $('error').textContent = message;
+  $('error').hidden = !message;
+}
+
+async function importFile(file) {
+  if (!file) return;
+  if (isDirty() && !confirm('יש שינויים שלא נשמרו. לייבא קובץ אחר בכל זאת?')) return;
+  showError('');
+  try {
+    if (!/\.xlsx$/i.test(file.name)) throw new Error('יש לבחור קובץ xlsx (למשל results/ex1/grades.xlsx).');
+    const sheets = await readWorkbook(await file.arrayBuffer());
+    const { base, edits } = readDataSheet(sheets) ?? readVisibleSheets(sheets);
+    if (!base.results.length) throw new Error('לא נמצאו שורות ציונים בקובץ.');
+    Object.assign(state, { base, edits, fileName: file.name, openName: null, undo: [], redo: [] });
+    state.saved = editsJson();
+    state.view = buildView();
+    $('start').hidden = true;
+    $('app').hidden = false;
+    $('status').hidden = true;
+    updateChrome();
+    renderList();
+    offerDraft();
+  } catch (error) {
+    console.error(error);
+    showError(`לא ניתן לקרוא את "${file.name}": ${error.message}`);
+  }
+}
+
+function setFilter(filter) {
+  state.filter = filter;
+  for (const chip of $('filters').children) chip.setAttribute('aria-pressed', String(chip.dataset.filter === filter));
+}
+
+/** VS Code's Simple Browser and other embedded views can't save or download files. */
+const embedded = (() => {
+  try { return window.self !== window.top || /\bCode\/|Electron/.test(navigator.userAgent); } catch { return true; }
+})();
+$('embedded').hidden = !embedded;
+
+$('undo').append(icon('undo'));
+$('redo').append(icon('redo'));
+$('pool-close').append(icon('x'));
+
+const fileInput = $('file');
+for (const button of document.querySelectorAll('[data-import]')) button.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  importFile(fileInput.files[0]);
+  fileInput.value = '';
+});
+
+let dragDepth = 0;
+const hasFiles = (event) => [...(event.dataTransfer?.types ?? [])].includes('Files');
+window.addEventListener('dragenter', (event) => {
+  if (!hasFiles(event)) return;
+  dragDepth++;
+  document.body.classList.add('dragging');
+});
+window.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) document.body.classList.remove('dragging');
+});
+window.addEventListener('dragover', (event) => { if (hasFiles(event)) event.preventDefault(); });
+window.addEventListener('drop', (event) => {
+  if (!hasFiles(event)) return;
+  event.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove('dragging');
+  importFile(event.dataTransfer.files[0]);
+});
+
+$('search').addEventListener('input', (event) => { state.query = event.target.value; renderList(); });
+$('sort').addEventListener('change', (event) => { state.sort = event.target.value; renderList(); });
+$('filters').addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-filter]');
+  if (!chip) return;
+  setFilter(chip.dataset.filter);
+  renderList();
+});
+$('pool-head').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-sort]');
+  if (!th) return;
+  const key = th.dataset.sort;
+  // Numbers sort from the largest on the first click (most deducted, most used); number and text from the start.
+  const first = key === 'points' || key === 'uses' ? -1 : 1;
+  state.poolSort = state.poolSort.key === key ? { key, dir: -state.poolSort.dir } : { key, dir: first };
+  renderPool();
+});
+$('undo').addEventListener('click', undo);
+$('redo').addEventListener('click', redo);
+$('save').addEventListener('click', save);
+$('download').addEventListener('click', download);
+$('download-publish').addEventListener('click', downloadPublish);
+$('open-pool').addEventListener('click', () => { renderPool(); poolDialog.showModal(); $('pool-search').focus(); });
+$('pool-close').addEventListener('click', () => poolDialog.close());
+poolDialog.addEventListener('click', (e) => { if (e.target === poolDialog) poolDialog.close(); });
+$('pool-search').addEventListener('input', renderPool);
+$('pool-used').addEventListener('change', renderPool);
+$('pool-add').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = $('pool-new-text').value.trim();
+  const points = numberValue($('pool-new-points'));
+  if (!text || points === undefined || Number.isNaN(points)) return;
+  const no = ops.addComment(text, points);
+  $('pool-new-text').value = '';
+  toast(`הערה ${no} נוספה לטבלה`);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (!state.base || !(e.ctrlKey || e.metaKey)) return;
+  const key = e.key.toLowerCase();
+  if (key === 's') { e.preventDefault(); save(); return; }
+  // In a text field the browser's own undo applies.
+  if (e.target.closest?.('input, textarea')) return;
+  if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if (key === 'y' || (key === 'z' && e.shiftKey)) { e.preventDefault(); redo(); }
+});
+window.addEventListener('beforeunload', (e) => {
+  if (isDirty()) e.preventDefault();
+});
+</script>
+</body>
+</html>

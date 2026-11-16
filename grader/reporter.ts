@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exercises } from '../exercises/registry';
 import { firstLine } from './grader';
-import { gradeOf, writeOutputs } from './output';
+import { gradeOf, printSummary, writeOutputs } from './output';
 import { resultsDir } from './paths';
 import { loadManifest } from './prepare';
 import type { StudentResult } from './types';
@@ -73,8 +73,7 @@ export default class GradeReporter implements Reporter {
       if (!r.students!.length && !r.review.includes(NO_IDS)) r.review.push(NO_IDS);
     }
     const all = [...merged.values()].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-    await writeOutputs(dir, exercise, all);
-    printSummary(dir, all);
+    printSummary(dir, await writeOutputs(dir, exercise, all));
   }
 }
 
@@ -90,16 +89,4 @@ function progressLine(r: StudentResult): string {
     numbers && ` [${numbers}]`,
     r.review.length ? '  needs manual review' : '',
   ].join('');
-}
-
-function printSummary(dir: string, results: StudentResult[]) {
-  const grades = results.map(gradeOf).filter((g): g is number => g !== undefined);
-  const average = grades.length ? (grades.reduce((a, b) => a + b, 0) / grades.length).toFixed(1) : '-';
-  const review = results.filter((r) => r.review.length || !r.graded).length;
-  const rel = (p: string) => path.relative(process.cwd(), p);
-  const groups = results.filter((r) => r.group).length;
-  console.log(`\n${results.length} submission(s)${groups ? ` (${groups} group(s))` : ''} · average ${average} · ${review} need manual review`);
-  console.log(`  ${rel(path.join(dir, 'grades.xlsx'))}`);
-  console.log(`  ${rel(path.join(dir, 'summary.html'))}`);
-  console.log(`  ${rel(path.join(dir, 'feedback'))}/<id>.txt\n`);
 }

@@ -1,11 +1,12 @@
-import { defineComments } from '../../grader/comments';
+import { defineComments, type CommentDef } from '../../../grader/comments';
 
 /**
- * Exercise 1 comments table ("טבלת הערות").
- * Comments are numbered in the order below; once grading has started, only append new ones.
+ * Exercise 1 comments table ("טבלת הערות"), version 1.
+ * FROZEN: grades were produced with this version. Change the table in a new version file (v2.ts, ...).
+ * Comments are numbered in the order below.
  * Deductions follow last year's table: mostly 1–2 points, 5–10 for a missing section, 0 for notes.
  */
-export const C = defineComments({
+export const DEFS = {
   // הגשה וקבצים
   MAIN_FILE_NAME: { text: 'קובץ הדף הראשי אינו נקרא index.html כנדרש', points: 0 },
   NO_EXTERNAL_CSS: { text: 'העיצוב לא נכתב בקובץ CSS חיצוני המקושר לדף (או שהקובץ ריק)', points: 2 },
@@ -69,4 +70,6 @@ export const C = defineComments({
   BOX_NO_SHADOW: { text: 'לקופסאות המידע חסר צל (box-shadow)', points: 1 },
   TITLES_SAME_COLOR: { text: 'כותרות השפות לא נצבעו בצבעים שונים', points: 1 },
   NOT_CLEARED: { text: 'אזור השפות הפופולריות אינו מופיע מתחת לקופסאות הצפות (חסר clear)', points: 2 },
-});
+} satisfies Record<string, CommentDef>;
+
+export const C = defineComments(DEFS);

@@ -1,9 +1,22 @@
 import type { Locator, Page } from '@playwright/test';
-import fs from 'node:fs';
-import path from 'node:path';
-import { describeColor, isGray, isLight, isTransparent, isWhite, sameColor } from '../../grader/colors';
-import type { Comment } from '../../grader/comments';
-import { rectsOf, stylesOf, summarize, toRgba, type Rect } from '../../grader/dom';
+import { describeColor, isLight, isTransparent, sameColor } from '../../grader/colors';
+import {
+  atWidth,
+  boxOverflow as overflowOf,
+  checkBackslashPaths,
+  checkDuplicateIds,
+  checkImages,
+  checkInlineStyles,
+  checkLastYear,
+  checkMainFileName,
+  checkRtl,
+  checkSkeleton,
+  checkStylesheet,
+  grayWithWhiteText,
+  inOneRow,
+  rowCount,
+} from '../../grader/common-checks';
+import { rectsOf, stylesOf, summarize, toRgba } from '../../grader/dom';
 import type { Site } from '../../grader/fixtures';
 import type { Grader } from '../../grader/grader';
 import { C } from './comments';
@@ -27,19 +40,11 @@ export async function gradeEx1(site: Site, g: Grader) {
   const { page } = site;
 
   await g.section('הגשה וקבצים', async () => {
-    await g.check('שם הקובץ הראשי index.html', async () => {
-      const name = site.submission.entry!.split('/').pop()!;
-      if (name.toLowerCase() !== 'index.html') g.flag(C.MAIN_FILE_NAME, `שם הקובץ: ${name}`);
-    });
-    await g.check('קובץ CSS חיצוני מקושר לדף', () => checkStylesheet(site, g));
-    await g.check('ללא עיצוב inline', async () => {
-      const tags = await page
-        .locator('[style]')
-        .evaluateAll((els) => els.filter((el) => el.getAttribute('style')!.trim() !== '').map((el) => `<${el.tagName.toLowerCase()}>`));
-      const detail = `${tags.length} אלמנטים: ${summarize(tags)}`;
-      if (tags.length >= 4) g.flag(C.INLINE_MANY, detail);
-      else if (tags.length) g.flag(C.INLINE_FEW, detail);
-    });
+    await checkMainFileName(site, g, C);
+    await g.check('קובץ CSS חיצוני מקושר לדף', () => checkStylesheet(site, g, C));
+    await checkInlineStyles(page, g, C);
+    // Files unrelated to the site: a submission-procedure check for every exercise (grader/protocol.ts).
+    await checkBackslashPaths(page, g, C);
   });
 
   const regions = await tagRegions(page);
@@ -48,10 +53,7 @@ export async function gradeEx1(site: Site, g: Grader) {
     await g.check('div מרכזי עם המחלקה page', async () => {
       if (!regions.page.found) g.flag(C.NO_PAGE_DIV);
     });
-    await g.check('כיוון מימין לשמאל (rtl)', async () => {
-      const [{ direction }] = await stylesOf(page.locator(regions.page.found ? R('page') : 'body').first(), ['direction']);
-      if (direction !== 'rtl') g.flag(C.NO_RTL, `direction: ${direction}`);
-    });
+    await checkRtl(page, g, C, regions.page.found ? R('page') : 'body');
     await g.check('שמות המחלקות כנדרש', async () => {
       const expected: [string, Region][] = [
         ['page', regions.page],
@@ -64,24 +66,14 @@ export async function gradeEx1(site: Site, g: Grader) {
       if (!regions.languages.found && regions.boxes.found) different.push('לא נמצא div עם המחלקה languages שעוטף את הקופסאות');
       if (different.length) g.flag(C.CLASS_NAMES, different.join(' | '));
     });
-    await g.check('לא הוגש פתרון משנה שעברה', () => checkLastYear(page, g));
-    await g.check('id ייחודי לכל אלמנט', async () => {
-      const duplicates = await page.locator('[id]').evaluateAll((els) => {
-        const counts = new Map<string, number>();
-        for (const el of els) if (el.id) counts.set(el.id, (counts.get(el.id) ?? 0) + 1);
-        return [...counts].filter(([, n]) => n > 1).map(([id, n]) => `"${id}" ×${n}`);
-      });
-      if (duplicates.length) g.flag(C.DUPLICATE_ID, summarize(duplicates));
+    await g.check('לא הוגש פתרון משנה שעברה', () => checkLastYear(page, g, C));
+    await g.check('הכותרות בדף כנדרש', async () => {
+      if (g.has(C.LAST_YEAR)) return; // same cause, already deducted
+      const wrong = await requiredTextsDiffer(page);
+      if (wrong.length) g.flag(C.REQUIRED_TEXTS, summarize(wrong, 5));
     });
-    await g.check('שלד הדף (DOCTYPE, meta charset, title)', async () => {
-      const s = await page.evaluate(() => ({
-        doctype: document.compatMode === 'CSS1Compat',
-        charset: !!document.querySelector('meta[charset], meta[http-equiv="content-type" i]'),
-        title: document.title.trim() !== '',
-      }));
-      const missing = [!s.doctype && '<!DOCTYPE html>', !s.charset && '<meta charset="utf-8">', !s.title && '<title>'].filter(Boolean);
-      if (missing.length) g.flag(C.SKELETON, `חסר: ${missing.join(', ')}`);
-    });
+    await checkDuplicateIds(page, g, C);
+    await checkSkeleton(page, g, C);
   });
 
   await g.section('אזור הכותרת', async () => {
@@ -127,15 +119,19 @@ export async function gradeEx1(site: Site, g: Grader) {
     });
     await g.check('כותרת h5 "לינקים שימושיים"', async () => {
       const missing = boxes.filter((b) => !b.h5);
-      if (missing.length) g.flag(C.BOX_NO_H5, labels(missing));
+      const empty = missing.some((b) => b.h5Empty) ? ' (תגית h5 ריקה)' : '';
+      if (missing.length) g.flag(C.BOX_NO_H5, labels(missing) + empty);
     });
     await g.check('רשימה לא ממוספרת עם לפחות שני קישורים', async () => {
       const noList = boxes.filter((b) => !b.ul && !b.ol);
       if (noList.length) g.flag(C.BOX_NO_LIST, labels(noList));
       const ordered = boxes.filter((b) => !b.ul && b.ol);
       if (ordered.length) g.flag(C.BOX_OL, labels(ordered));
-      const fewLinks = boxes.filter((b) => (b.ul || b.ol) && b.listLinks < 2);
-      if (fewLinks.length) g.flag(C.BOX_FEW_LINKS, summarize(fewLinks.map((b) => `${b.label}: ${b.listLinks} קישורים`)));
+      // Two links, each in its own <ul>: a structure mistake, not too few links.
+      const split = boxes.filter((b) => (b.ul || b.ol) && b.listLinks < 2 && b.allListLinks >= 2);
+      if (split.length) g.flag(C.BOX_SPLIT_LIST, summarize(split.map((b) => `${b.label}: ${b.allListLinks} קישורים ב-${b.lists} רשימות`)));
+      const fewLinks = boxes.filter((b) => (b.ul || b.ol) && b.allListLinks < 2);
+      if (fewLinks.length) g.flag(C.BOX_FEW_LINKS, summarize(fewLinks.map((b) => `${b.label}: ${b.allListLinks} קישורים`)));
     });
     await g.check('טבלה עם שורת כותרות ושתי שורות מידע', async () => {
       const noTable = boxes.filter((b) => !b.table);
@@ -149,6 +145,17 @@ export async function gradeEx1(site: Site, g: Grader) {
       if (shape.length) g.flag(C.TABLE_SHAPE, summarize(shape.map((t) => `${t.label}: ${t.cols} עמודות, ${t.dataRows} שורות מידע`)));
       const noLinks = tables.filter((t) => t.links === 0);
       if (noLinks.length) g.flag(C.TABLE_NO_LINKS, labels(noLinks));
+      const swapped = tables.filter((t) => t.linksOutsideLinkColumn);
+      if (swapped.length) g.flag(C.TABLE_COLUMNS_SWAPPED, labels(swapped));
+    });
+    await g.check('הקישורים מובילים לדפי מידע', async () => {
+      const total = boxes.reduce((n, b) => n + b.links, 0);
+      const placeholders = boxes.reduce((n, b) => n + b.placeholderLinks, 0);
+      if (placeholders) g.flag(C.LINKS_PLACEHOLDER, `${placeholders} מתוך ${total} קישורים`);
+    });
+    await g.check('סדר הרכיבים בקופסה', async () => {
+      const outOfOrder = boxes.filter((b) => !b.inOrder);
+      if (outOfOrder.length) g.flag(C.BOX_ORDER, summarize(outOfOrder.map((b) => `${b.label}: ${b.order.join(' ← ')}`)));
     });
   });
 
@@ -170,59 +177,7 @@ export async function gradeEx1(site: Site, g: Grader) {
     });
   });
 
-  await g.section('תמונות', async () => {
-    const images = await page.locator('img').evaluateAll((els) =>
-      els.map((el) => {
-        const img = el as HTMLImageElement;
-        return {
-          src: img.getAttribute('src') ?? '',
-          url: img.currentSrc || img.src,
-          loaded: img.complete && img.naturalWidth > 0,
-          width: img.width,
-          height: img.height,
-          naturalWidth: img.naturalWidth,
-          naturalHeight: img.naturalHeight,
-          fit: getComputedStyle(img).objectFit,
-        };
-      }),
-    );
-    const failed = new Set(site.failedRequests.map((r) => r.url));
-    const isSvg = (url: string) => /\.svg([?#]|$)/i.test(url);
-    const broken = images.filter((i) => i.src.trim() === '' || failed.has(i.url) || !(i.loaded || isSvg(i.url)));
-    const working = images.filter((i) => !broken.includes(i));
-
-    await g.check('כל התמונות מוצגות', async () => {
-      const why = (i: (typeof images)[number]) =>
-        i.src.trim() === '' ? '(src ריק)' : /^(file:|[a-z]:[\\/])/i.test(i.src) ? `${i.src} (נתיב מוחלט למחשב שלכם)` : i.src;
-      if (broken.length === 1) g.flag(C.IMG_BROKEN_ONE, why(broken[0]));
-      else if (broken.length > 1) g.flag(C.IMG_BROKEN_MANY, `${broken.length} תמונות: ${summarize(broken.map(why))}`);
-    });
-    await g.check('התמונות אינן מעוותות', async () => {
-      const stretched = working.filter(
-        (i) =>
-          i.width > 8 &&
-          i.height > 8 &&
-          i.naturalHeight > 0 &&
-          !['contain', 'cover', 'scale-down'].includes(i.fit) &&
-          Math.abs(i.width / i.height / (i.naturalWidth / i.naturalHeight) - 1) > 0.08,
-      );
-      if (stretched.length) g.flag(C.IMG_STRETCHED, summarize(stretched.map((i) => i.src)));
-    });
-    await g.check('התמונות בתיקייה images', async () => {
-      const origin = new URL(site.baseUrl).origin;
-      const outside = working.filter(
-        (i) => i.url.startsWith(origin) && !decodeURI(new URL(i.url).pathname).toLowerCase().split('/').includes('images'),
-      );
-      if (outside.length) g.flag(C.NO_IMAGES_FOLDER, summarize(outside.map((i) => i.src)));
-    });
-    await g.check('אותיות גדולות/קטנות בנתיבים', async () => {
-      // Show paths as the student wrote them: relative to the page's folder.
-      const pageDir = site.submission.entry!.split('/').slice(0, -1).join('/');
-      const relative = (p: string) => (pageDir && p.startsWith(`${pageDir}/`) ? p.slice(pageDir.length + 1) : p);
-      const mismatches = site.caseMismatches.map((m) => `כתוב "${relative(m.requested)}" אך שם הקובץ "${relative(m.actual)}"`);
-      if (mismatches.length) g.flag(C.PATH_CASE, summarize(mismatches, 3));
-    });
-  });
+  await g.section('תמונות', () => checkImages(site, g, C));
 
   await g.section('דרישות עיצוב', async () => {
     await g.check('גופן לדף', async () => {
@@ -233,9 +188,35 @@ export async function gradeEx1(site: Site, g: Grader) {
         const initial = getComputedStyle(probe).fontFamily;
         probe.remove();
         const text = document.querySelector('[data-grader~="box"] p') ?? document.querySelector('p') ?? document.body;
-        return { font: getComputedStyle(text).fontFamily, initial };
+        // A font chosen in the CSS counts even when it is the browser's default (e.g. "Times New Roman").
+        const rules: CSSStyleRule[] = [];
+        const collect = (list: CSSRuleList) => {
+          for (const rule of Array.from(list)) {
+            if (rule instanceof CSSStyleRule) rules.push(rule);
+            else if (rule instanceof CSSMediaRule && matchMedia(rule.conditionText).matches) collect(rule.cssRules);
+          }
+        };
+        for (const sheet of Array.from(document.styleSheets)) {
+          try {
+            collect(sheet.cssRules);
+          } catch {} // a cross-origin stylesheet can't be read
+        }
+        const chain: Element[] = [];
+        for (let el: Element | null = text; el; el = el.parentElement) chain.push(el);
+        const declared = chain.some(
+          (el) =>
+            (el as HTMLElement).style.fontFamily !== '' ||
+            rules.some((rule) => rule.style.fontFamily !== '' && (() => {
+              try {
+                return el.matches(rule.selectorText);
+              } catch {
+                return false;
+              }
+            })()),
+        );
+        return { font: getComputedStyle(text).fontFamily, initial, declared };
       });
-      if (s.font === s.initial) g.flag(C.NO_FONT, `הגופן בדף: ${s.font} (ברירת המחדל של הדפדפן)`);
+      if (s.font === s.initial && !s.declared) g.flag(C.NO_FONT, `הגופן בדף: ${s.font} (ברירת המחדל של הדפדפן)`);
     });
     await g.check('צבע רקע בהיר לדף', async () => {
       const targets = ['html', 'body', ...(regions.page.found ? [R('page')] : [])];
@@ -258,19 +239,24 @@ export async function gradeEx1(site: Site, g: Grader) {
       if (regions.boxes.count < 2) return;
       const boxes = page.locator(R('box'));
       const rects = (await rectsOf(boxes)).filter((r) => r.width > 0 && r.height > 0);
-      const byLeft = [...rects].sort((a, b) => a.left - b.left);
-      const sideBySide = byLeft.every(
-        (r, i) => i === 0 || (r.left >= byLeft[i - 1].right - 2 && Math.abs(r.top - byLeft[0].top) <= 20),
-      );
-      if (!sideBySide) {
+      if (!inOneRow(rects)) {
         const rows = rowCount(rects);
-        return g.flag(C.NOT_SIDE_BY_SIDE, rows > 1 ? `הקופסאות מסודרות ב-${rows} שורות` : 'הקופסאות חופפות זו לזו');
+        const floats = await stylesOf(boxes, ['float']);
+        const names = await boxLabels(boxes);
+        const notFloated = names.filter((_, i) => floats[i]?.float === 'none');
+        const why = notFloated.length && notFloated.length < names.length ? ` (קופסאות שאינן צפות: ${summarize(notFloated)})` : '';
+        return g.flag(C.NOT_SIDE_BY_SIDE, (rows > 1 ? `הקופסאות מסודרות ב-${rows} שורות` : 'הקופסאות חופפות זו לזו') + why);
       }
-      // Only when the layout works: was it done with float?
+      // Only when the layout works: was it done with float? Inside flex/grid, float has no effect.
       const styles = await stylesOf(boxes, ['float', 'display']);
-      if (styles.some((s) => s.float === 'none')) {
-        const [parent] = await stylesOf(boxes.first().locator('xpath=..'), ['display']);
-        g.flag(C.NO_FLOAT, `display: ${/flex|grid/.test(parent.display) ? parent.display : styles[0].display}`);
+      const [parent] = await stylesOf(boxes.first().locator('xpath=..'), ['display']);
+      const flexOrGrid = /flex|grid/.test(parent.display);
+      if (flexOrGrid || styles.some((s) => s.float === 'none')) {
+        const floated = styles.some((s) => s.float !== 'none');
+        g.flag(
+          C.NO_FLOAT,
+          flexOrGrid ? `display: ${parent.display}${floated ? ' (ה-float שהוגדר לקופסאות אינו משפיע בתוך flex/grid)' : ''}` : `display: ${styles[0].display}`,
+        );
       }
     });
     await g.check('רקע בהיר, ריפוד, מסגרת מעוגלת וצל לקופסאות', async () => {
@@ -316,6 +302,28 @@ export async function gradeEx1(site: Site, g: Grader) {
         g.flag(C.NOT_CLEARED, `האזור מתחיל ${Math.round(bottom - popular.top)}px מעל תחתית הקופסאות`);
       }
     });
+    await g.check('התוכן נשאר בתוך הקופסאות', async () => {
+      if (!regions.boxes.found) return;
+      const over = (await boxOverflow(page)).filter((b) => b.px > 4);
+      if (over.length) g.flag(C.BOX_OVERFLOW, summarize(over.map((b) => `${b.label}: ${b.px}px`)));
+    });
+    // Last: it resizes the page. Only when the layout works at full width (otherwise it's already deducted).
+    await g.check('הפריסה במסך של מחשב נייד (1366px)', async () => {
+      if (regions.boxes.count < 2 || [C.NOT_SIDE_BY_SIDE, C.NOT_CLEARED, C.BOX_OVERFLOW].some((c) => g.has(c))) return;
+      const problems = await atWidth(page, 1366, async () => {
+        const out: string[] = [];
+        const rects = (await rectsOf(page.locator(R('box')))).filter((r) => r.width > 0 && r.height > 0);
+        if (!inOneRow(rects)) out.push(`הקופסאות מסודרות ב-${rowCount(rects)} שורות`);
+        const over = (await boxOverflow(page)).filter((b) => b.px > 4);
+        if (over.length) out.push(`תוכן חורג מהקופסאות: ${summarize(over.map((b) => `${b.label} ${b.px}px`))}`);
+        if (regions.popular.found) {
+          const [popular] = await rectsOf(page.locator(R('popular')).first());
+          if (popular.top < Math.max(...rects.map((r) => r.bottom)) - 2) out.push('אזור השפות הפופולריות עולה על הקופסאות');
+        }
+        return out;
+      });
+      if (problems.length) g.flag(C.NARROW_LAYOUT, problems.join('; '));
+    });
   });
 }
 
@@ -344,7 +352,8 @@ function tagRegions(page: Page): Promise<Regions> {
     let boxes = all('.box');
     const boxesExact = boxes.length > 0;
     if (!boxesExact) {
-      const candidates = all('div, section, article, aside').filter((el) => el.querySelector('h2, h3, h4') && el.querySelector('table, ul, ol'));
+      // Any element, not only div/section: students also use e.g. <span class="card"> as the box.
+      const candidates = all('body *').filter((el) => el.querySelector('h2, h3, h4') && el.querySelector('table, ul, ol'));
       boxes = candidates.filter((el) => !candidates.some((other) => other !== el && el.contains(other)));
     }
     const touchesBox = (el: Element) => boxes.some((b) => b.contains(el) || el.contains(b));
@@ -419,84 +428,33 @@ function tagRegions(page: Page): Promise<Regions> {
   });
 }
 
-async function checkStylesheet(site: Site, g: Grader) {
-  const { page } = site;
-  const { links, styleTags } = await page.evaluate(() => ({
-    links: Array.from(document.querySelectorAll<HTMLLinkElement>('link'))
-      .filter((link) => /stylesheet/i.test(link.rel))
-      .map((link) => {
-        let rules = -1; // not loaded
-        try {
-          if (link.sheet) rules = link.sheet.cssRules.length;
-        } catch {
-          rules = -2; // cross-origin, e.g. a CDN: not the student's own file
-        }
-        return { attr: link.getAttribute('href') ?? '', href: link.href, rules };
-      }),
-    styleTags: Array.from(document.querySelectorAll('style')).filter((s) => (s.textContent ?? '').trim() !== '').length,
-  }));
-  const failed = new Set(site.failedRequests.map((r) => r.url));
-  const origin = new URL(site.baseUrl).origin;
-  const own = links.filter((l) => l.href.startsWith(origin) || !/^https?:/i.test(l.href));
-  const loaded = own.filter((l) => l.rules >= 0 && !failed.has(l.href));
-  const withRules = loaded.filter((l) => l.rules > 0);
-
-  if (withRules.length) {
-    const names = withRules.map((l) => decodeURIComponent(new URL(l.href).pathname.split('/').pop() ?? ''));
-    if (!names.some((n) => n.toLowerCase() === 'style.css')) g.flag(C.CSS_FILE_NAME, `שם הקובץ: ${summarize(names)}`);
-    return;
-  }
-
-  // The student's CSS exists but isn't applied: apply it ourselves so the design is still graded.
-  const broken = own.filter((l) => !loaded.includes(l));
-  const cssFiles = site.files.filter(
-    (f) => /\.css$/i.test(f) && fs.readFileSync(path.join(site.submission.rootDir!, f), 'utf8').trim() !== '',
-  );
-  if (cssFiles.length && (broken.length || !styleTags)) {
-    const file = pickCssFile(cssFiles, broken.map((l) => l.attr));
-    await site.injectCss(file);
-    const link = broken[0] ?? loaded[0];
-    const why = !link
-      ? 'לא נמצאה תגית <link> לקובץ'
-      : `href="${link.attr}"` +
-        (loaded.includes(link) ? ' (קובץ ריק)' : /^(file:|[a-z]:[\\/])/i.test(link.attr) ? ' (נתיב מוחלט למחשב שלכם)' : '');
-    g.flag(C.CSS_LINK_BROKEN, `${why}, הקובץ בהגשה: ${file}`);
-    if (file.split('/').pop()!.toLowerCase() !== 'style.css') g.flag(C.CSS_FILE_NAME, `שם הקובץ: ${file}`);
-    return;
-  }
-
-  if (styleTags) g.flag(C.NO_EXTERNAL_CSS, 'העיצוב נכתב בתגית <style> בתוך הדף');
-  else if (loaded.length) g.flag(C.NO_EXTERNAL_CSS, 'קובץ ה-CSS המקושר ריק');
-  else g.flag(C.NO_EXTERNAL_CSS, 'לא נמצא קובץ CSS בהגשה');
-}
-
-/** Prefers the file the broken <link> pointed at, then style.css. */
-function pickCssFile(files: string[], hrefs: string[]): string {
-  const name = (p: string) => p.split(/[\\/]/).pop()!.toLowerCase();
-  const wanted = new Set(hrefs.map(name));
-  return files.find((f) => wanted.has(name(f))) ?? files.find((f) => name(f) === 'style.css') ?? files[0];
-}
-
-/** Last year's version used header/container/footer divs and a different h1. */
-async function checkLastYear(page: Page, g: Grader) {
-  const s = await page.evaluate(() => ({
-    h1: document.querySelector('h1')?.textContent ?? '',
-    h2: Array.from(document.querySelectorAll('h2'), (h) => h.textContent ?? '').join(' '),
-    oldClasses: ['width-full', 'footer-images'].filter((c) => document.querySelector(`.${c}`)),
-    containerAndFooter: !!document.querySelector('.container') && !!document.querySelector('.footer'),
-    newClasses: ['page-header', 'popular-languages'].some((c) => document.querySelector(`.${c}`)),
-  }));
-  const strong = [/קורס|frontend|צד לקוח/i.test(s.h1) && 'כותרת h1 של השנה שעברה', ...s.oldClasses.map((c) => `המחלקה ${c}`)];
-  const weak = [
-    /HyperText Markup Language|Cascading Style Sheets|Java Script/i.test(s.h2) && 'כותרות h2 של השנה שעברה',
-    s.containerAndFooter && 'המחלקות container ו-footer',
-    !s.newClasses && 'חסרות המחלקות page-header ו-popular-languages',
-  ];
-  const signals = { strong: strong.filter((x): x is string => !!x), weak: weak.filter((x): x is string => !!x) };
-  if (signals.strong.length >= 2 || (signals.strong.length >= 1 && signals.weak.length >= 1)) {
-    g.flag(C.LAST_YEAR, [...signals.strong, ...signals.weak].join(', '));
-    g.review('נראה כמו פתרון של השנה שעברה – כדאי לבדוק ידנית');
-  }
+/**
+ * The texts the spec asks for, matched loosely (keywords), on the elements that exist.
+ * Missing elements are reported by their own checks.
+ */
+function requiredTextsDiffer(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const norm = (el: Element | null | undefined) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const short = (text: string) => `"${text.length > 30 ? `${text.slice(0, 30)}…` : text}"`;
+    const wrong: string[] = [];
+    const h1 = document.querySelector('[data-grader~="header"] h1') ?? document.querySelector('h1');
+    const title = norm(h1);
+    if (h1 && !(title.includes('שפות') && title.includes('אתר'))) wrong.push(`כותרת ראשית: ${short(title)}`);
+    const boxes = Array.from(document.querySelectorAll('[data-grader~="box"]'));
+    const h5 = boxes.map((b) => norm(b.querySelector('h5'))).find((t) => t && !/לינקים|קישורים/.test(t));
+    if (h5) wrong.push(`כותרת h5: ${short(h5)}`);
+    const headerRow = boxes
+      .map((b) => norm(b.querySelector('table')?.rows[0]))
+      .find((t) => t && !(/גי?רס/.test(t) && /לינק|קישור|מידע/.test(t)));
+    if (headerRow) wrong.push(`כותרות הטבלה: ${short(headerRow)}`);
+    const popular = document.querySelector('[data-grader~="popular"]');
+    if (popular) {
+      const heading = popular.querySelector('h1, h2, h3, h4, h5, h6');
+      const text = norm(heading ?? popular);
+      if (!text.includes('פופולר')) wrong.push(`כותרת השפות הפופולריות: ${short(text || '(ריקה)')}`);
+    }
+    return wrong;
+  });
 }
 
 function analyzeBoxes(boxes: Locator) {
@@ -514,27 +472,56 @@ function analyzeBoxes(boxes: Locator) {
         // A header row written with td: no links, and header-like text or bold cells.
         const looksLikeHeader =
           !rows[0]?.querySelector('a') &&
-          (/גרס|לינק|קישור/.test(rows[0]?.textContent ?? '') ||
+          (/גי?רס|לינק|קישור/.test(rows[0]?.textContent ?? '') ||
             (cells.length > 0 && cells.every((c) => parseInt(getComputedStyle(c).fontWeight) >= 600)));
         const headerLike = firstRowTh || !!table.tHead || looksLikeHeader;
         const width = (r: HTMLTableRowElement) => Array.from(r.cells).reduce((n, c) => n + c.colSpan, 0);
+        // The column headed "לינק למידע" should hold the links: data rows whose links are all in
+        // another column mean the headers don't match the columns.
+        const linkHeader = headerLike ? cells.findIndex((c) => /לינק|קישור/.test(c.textContent ?? '') && !/גי?רס/.test(c.textContent ?? '')) : -1;
+        const linkRows = rows.slice(headerLike ? 1 : 0).map((r) => Array.from(r.cells).findIndex((c) => !!c.querySelector('a[href]'))).filter((i) => i >= 0);
         tableInfo = {
           firstRowTh,
           headerLike,
           cols: Math.max(0, ...rows.map(width)),
           dataRows: rows.length - (headerLike ? 1 : 0),
           links: table.querySelectorAll('a[href]').length,
+          linksOutsideLinkColumn: linkHeader >= 0 && linkRows.length > 0 && linkRows.every((i) => i !== linkHeader),
         };
       }
+      // Order of the parts the spec lists (h2, description, h5, list, table), by first appearance.
+      const description = Array.from(el.querySelectorAll('p')).find((p) => !p.closest('ul, ol, table'));
+      const parts: [string, Element | null | undefined][] = [
+        ['h2', el.querySelector('h2')],
+        ['p', description],
+        ['h5', el.querySelector('h5')],
+        ['רשימה', ul ?? ol],
+        ['טבלה', table],
+      ];
+      const present = parts.filter((part): part is [string, Element] => !!part[1]);
+      const byPosition = [...present].sort((a, b) => (a[1].compareDocumentPosition(b[1]) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+      const anchors = Array.from(el.querySelectorAll('a'));
+      // Lists outside the table (a <ul> written inside a <table> is moved out by the browser, empty).
+      const lists = Array.from(el.querySelectorAll('ul, ol')).filter((l) => !l.closest('table'));
+      const linksIn = (l: Element) => l.querySelectorAll('a[href]').length;
+      const placeholder = (a: Element) => /^\s*(#.*)?$|^\s*javascript:/i.test(a.getAttribute('href') ?? '');
       return {
         label: (el.querySelector('h2') ?? heading)?.textContent?.trim().slice(0, 25) || `קופסה ${i + 1}`,
+        links: anchors.length,
+        placeholderLinks: anchors.filter(placeholder).length,
+        inOrder: byPosition.every((part, j) => part === present[j]),
+        order: byPosition.map(([name]) => name),
         h2: !!el.querySelector('h2'),
         otherHeading: heading && heading.tagName !== 'H2' ? heading.tagName.toLowerCase() : undefined,
         p: Array.from(el.querySelectorAll('p')).some((p) => (p.textContent ?? '').trim() !== ''),
-        h5: !!el.querySelector('h5'),
+        h5: Array.from(el.querySelectorAll('h5')).some((h) => (h.textContent ?? '').trim() !== ''),
+        h5Empty: !!el.querySelector('h5'),
         ul: !!ul,
         ol: !!ol,
-        listLinks: (ul ?? ol)?.querySelectorAll('a[href]').length ?? 0,
+        /** Links in the fullest list, and in all the lists together. */
+        listLinks: Math.max(0, ...lists.map(linksIn)),
+        allListLinks: lists.reduce((n, l) => n + linksIn(l), 0),
+        lists: lists.filter((l) => linksIn(l) > 0).length,
         table: tableInfo,
       };
     }),
@@ -547,28 +534,5 @@ function boxLabels(boxes: Locator): Promise<string[]> {
   );
 }
 
-/** Gray background on the region (or its heading) and white text in its heading. */
-async function grayWithWhiteText(page: Page, region: string, notGray: Comment, notWhite: Comment, g: Grader) {
-  const s = await page
-    .locator(region)
-    .first()
-    .evaluate((el) => {
-      const heading = el.matches('h1, h2, h3, h4, h5, h6') ? el : el.querySelector('h1, h2, h3, h4, h5, h6');
-      return {
-        background: getComputedStyle(el).backgroundColor,
-        headingBackground: heading ? getComputedStyle(heading).backgroundColor : 'transparent',
-        text: getComputedStyle(heading ?? el).color,
-      };
-    });
-  const [background, headingBackground, text] = await toRgba(page, [s.background, s.headingBackground, s.text]);
-  if (!isGray(background) && !isGray(headingBackground)) {
-    g.flag(notGray, `צבע הרקע: ${describeColor(isTransparent(background) ? headingBackground : background)}`);
-  }
-  if (!isWhite(text)) g.flag(notWhite, `צבע הטקסט: ${describeColor(text)}`);
-}
-
-/** Number of rows the boxes are laid out in (tops more than 20px apart start a new row). */
-function rowCount(rects: Rect[]): number {
-  const tops = rects.map((r) => r.top).sort((a, b) => a - b);
-  return tops.filter((top, i) => i === 0 || top - tops[i - 1] > 20).length;
-}
+/** How far content sticks out of each information box, in px. */
+const boxOverflow = (page: Page) => overflowOf(page, R('box'));

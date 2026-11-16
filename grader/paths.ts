@@ -16,3 +16,12 @@ export const resultsDir = (exercise: string) => path.join(ROOT, 'results', exerc
 
 /** Written by `npm run fetch`: each group's mail details, read by `prepare` (dot file, so it isn't a submission). */
 export const groupsFile = (exercise: string) => path.join(submissionsDir(exercise), '.groups.json');
+
+/** Added by hand: manual-submissions/<exercise>/cgroupNN/<one zip>; replaces the group's mailed zip. */
+export const manualDir = (exercise: string) => path.join(ROOT, 'manual-submissions', exercise);
+
+/** Saved from grades-viewer.html: the grader's hand edits, applied whenever the reports are written (grader/edits.ts). */
+export const editsFile = (exercise: string) => path.join(manualDir(exercise), 'grade-edits.json');
+
+/** Written by `npm run fetch`: each group's zip extracted, for looking at the files by hand. */
+export const unzippedDir = (exercise: string) => path.join(ROOT, 'unzipped', exercise);

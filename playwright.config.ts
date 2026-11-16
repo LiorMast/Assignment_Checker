@@ -23,6 +23,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'ex1', testMatch: 'ex1/grade.spec.ts' },
+    { name: 'ex2', testMatch: 'ex2/grade.spec.ts' },
     { name: 'selftest', testMatch: '**/selftest.spec.ts' },
   ],
 });

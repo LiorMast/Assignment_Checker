@@ -1,5 +1,6 @@
 import { test as base, type Page, type TestInfo } from '@playwright/test';
 import path from 'node:path';
+import { serveBootstrapLocally } from './bootstrap';
 import { firstLine, Grader } from './grader';
 import { listFiles, toPosix } from './prepare';
 import { serveDir } from './server';
@@ -56,6 +57,8 @@ export async function openSite(page: Page, submission: Submission, info: TestInf
   });
 
   try {
+    // The exercise's Bootstrap version comes from node_modules: no network, the same file for everyone.
+    await serveBootstrapLocally(page);
     await page.goto(baseUrl + encodePath(submission.entry!), { waitUntil: 'load', timeout: 30_000 });
     await settle(page);
     const shot = info.outputPath('screenshot.jpg');
@@ -94,6 +97,14 @@ async function settle(page: Page) {
     .waitForFunction(() => Array.from(document.images).every((img) => img.complete), undefined, { timeout: 10_000 })
     .catch(() => {}); // a slow external image is reported as broken, not as a crash
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  // Entry animations (e.g. boxes scaling in) would otherwise be measured half-way.
+  await page.evaluate(() => {
+    for (const animation of document.getAnimations()) {
+      try {
+        animation.finish(); // throws for infinite animations, which are left running
+      } catch {}
+    }
+  });
 }
 
 export const test = base.extend<{ submission: Submission; g: Grader; site: Site }>({

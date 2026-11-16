@@ -2,22 +2,117 @@ import ExcelJS from 'exceljs';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ExerciseInfo } from '../exercises/registry';
-import { pointsLabel } from './comments';
+import { pointsLabel, type Comment } from './comments';
+import { applyEdits, loadEdits, type AppliedEdits, type GradeEdits } from './edits';
+import { loadRoster, ROSTER_FILE, type Roster } from './roster';
 import type { StudentResult } from './types';
 
-/** 100 minus the deductions; undefined when the submission could not be graded automatically. */
+/** 100 minus the deductions (or the grader's hand grade); undefined when the submission could not be graded. */
 export function gradeOf(result: StudentResult): number | undefined {
   if (!result.graded) return undefined;
+  if (result.manualGrade !== undefined) return result.manualGrade;
   return Math.max(0, 100 - result.flags.reduce((sum, f) => sum + f.points, 0));
 }
 
-/** Writes results.json, grades.xlsx, feedback/<id>.txt and summary.html into `dir`. */
-export async function writeOutputs(dir: string, exercise: ExerciseInfo, results: StudentResult[]) {
+/**
+ * Writes results.json (the automatic results, as graded) and, with the grader's hand edits
+ * (manual-submissions/<ex>/grade-edits.json) applied, grades.xlsx, feedback/<id>.txt,
+ * summary.html and (with a roster) students.xlsx into `dir`.
+ */
+export async function writeOutputs(dir: string, exercise: ExerciseInfo, results: StudentResult[]): Promise<AppliedEdits> {
   fs.mkdirSync(path.join(dir, 'feedback'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'results.json'), JSON.stringify(results, null, 2));
-  for (const r of results) fs.writeFileSync(path.join(dir, 'feedback', `${r.id}.txt`), feedback(exercise, r));
-  await writeWorkbook(path.join(dir, 'grades.xlsx'), exercise, results);
-  fs.writeFileSync(path.join(dir, 'summary.html'), summaryHtml(exercise, results));
+  const edits = loadEdits(exercise.key);
+  const applied = applyEdits(results, exercise.comments, edits);
+  const edited: ExerciseInfo = { ...exercise, comments: applied.comments };
+  for (const r of applied.results) fs.writeFileSync(path.join(dir, 'feedback', `${r.id}.txt`), feedback(edited, r));
+  await writeWorkbook(path.join(dir, 'grades.xlsx'), exercise, results, edits);
+  fs.writeFileSync(path.join(dir, 'summary.html'), summaryHtml(edited, applied.results));
+  const roster = await loadRoster();
+  const students = path.join(dir, 'students.xlsx');
+  if (roster) await writeStudentsReport(students, edited, applied.results, roster);
+  else fs.rmSync(students, { force: true });
+  return applied;
+}
+
+/** The console summary after the reports are written. */
+export function printSummary(dir: string, applied: AppliedEdits) {
+  const results = applied.results;
+  const grades = results.map(gradeOf).filter((g): g is number => g !== undefined);
+  const average = grades.length ? (grades.reduce((a, b) => a + b, 0) / grades.length).toFixed(1) : '-';
+  const review = results.filter((r) => r.review.length || !r.graded).length;
+  const rel = (p: string) => path.relative(process.cwd(), p);
+  const groups = results.filter((r) => r.group).length;
+  const edited = results.filter((r) => r.edited).length;
+  console.log(`\n${results.length} submission(s)${groups ? ` (${groups} group(s))` : ''} · average ${average} · ${review} need manual review`);
+  const checked = results.filter((r) => r.checked).length;
+  if (edited || checked) console.log(`  ${edited} with hand edits, ${checked} marked as checked (grade-edits.json)`);
+  for (const warning of applied.warnings) console.warn(`  ! grade-edits.json: ${warning}`);
+  console.log(`  ${rel(path.join(dir, 'grades.xlsx'))}`);
+  if (fs.existsSync(path.join(dir, 'students.xlsx'))) console.log(`  ${rel(path.join(dir, 'students.xlsx'))}   (every student in groups.xlsx)`);
+  console.log(`  ${rel(path.join(dir, 'summary.html'))}`);
+  console.log(`  ${rel(path.join(dir, 'feedback'))}/<id>.txt\n`);
+}
+
+/** A student's line in students.xlsx. */
+export interface StudentRow {
+  group: string;
+  name: string;
+  id: string;
+  email: string;
+  grade: number | null;
+  comments: string;
+  status: 'נבדק' | 'לבדיקה ידנית' | 'לא הוגש';
+  review: string;
+}
+
+/**
+ * One row per student of the roster (groups.xlsx), with the grade of the student's group: groups
+ * without a submission get 0 ("לא הוגש"); submissions that couldn't be graded get no grade. Graded
+ * submissions whose group isn't in the roster come last, so no grade is lost.
+ */
+export function studentRows(results: StudentResult[], roster: Pick<Roster, 'groups'>): StudentRow[] {
+  const byGroup = new Map(results.map((r) => [r.group ?? r.id, r]));
+  const row = (group: string, name: string, id: string, email: string, r?: StudentResult): StudentRow => {
+    const grade = r ? gradeOf(r) : 0;
+    const status = !r ? 'לא הוגש' : grade === undefined || r.review.length ? 'לבדיקה ידנית' : 'נבדק';
+    const comments = r?.flags.map((f) => f.no).join(',') ?? '';
+    return { group, name, id, email, grade: grade ?? null, comments, status, review: r?.review.join('\n') ?? '' };
+  };
+  const sorted = [...roster.groups].sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+  const rows = sorted.flatMap(([group, students]) => students.map((s) => row(group, s.name, s.id, s.email, byGroup.get(group))));
+  for (const r of results) {
+    if (roster.groups.has(r.group ?? r.id)) continue;
+    const ids = r.students?.length ? r.students : [r.group ? '' : r.id];
+    rows.push(...ids.map((id) => row(r.group ?? '', '', id, '', r)));
+  }
+  return rows;
+}
+
+async function writeStudentsReport(file: string, exercise: ExerciseInfo, results: StudentResult[], roster: Roster) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(exercise.sheetName, { views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }] });
+  sheet.columns = [
+    { header: 'קבוצה', width: 11 },
+    { header: 'שם', width: 20 },
+    { header: 'ת"ז', width: 12 },
+    { header: 'מייל', width: 30 },
+    { header: exercise.gradeHeader, width: 12 },
+    { header: 'מספרי הערות', width: 30 },
+    { header: 'מצב', width: 13 },
+    { header: 'הערות לבודק', width: 80 },
+  ];
+  sheet.getRow(1).font = { bold: true };
+  const colors: Record<StudentRow['status'], string | undefined> = { נבדק: undefined, 'לבדיקה ידנית': 'FFFEF3C7', 'לא הוגש': 'FFFECACA' };
+  for (const s of studentRows(results, roster)) {
+    const row = sheet.addRow([s.group, s.name || null, idCell(s.id), s.email || null, s.grade, s.comments || null, s.status, s.review || null]);
+    row.alignment = { vertical: 'top', wrapText: true };
+    const color = colors[s.status];
+    if (color) row.eachCell((cell) => (cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }));
+  }
+  sheet.addRow([]);
+  sheet.addRow([`נוצר מ-${path.basename(ROSTER_FILE)}, גרסת טבלת ההערות ${exercise.commentsVersion}`]);
+  await workbook.xlsx.writeFile(file);
 }
 
 /** Keeps IDs numeric like in the course workbook, unless that would drop a leading zero. */
@@ -36,8 +131,36 @@ function gradeRows(r: StudentResult): GradeRow[] {
   return r.students.map((id) => ({ id, group: r.group, review: r.review }));
 }
 
-/** Same layout as the course's grades workbook: students in A–D, comments table in G–I. */
-async function writeWorkbook(file: string, exercise: ExerciseInfo, results: StudentResult[]) {
+/** Name of the hidden sheet in grades.xlsx that grades-viewer.html reads to keep editing. */
+export const DATA_SHEET = 'grader-data';
+/** Excel holds up to 32767 characters in a cell; longer values continue in the next rows under the same key. */
+const CHUNK = 30000;
+
+/**
+ * Same layout as the course's grades workbook: students in A–D, comments table in G–I, with the
+ * hand edits applied. A hidden sheet holds the automatic results, the comments table and the edits,
+ * so grades-viewer.html can open the file and keep editing.
+ */
+export async function writeWorkbook(file: string, exercise: ExerciseInfo, automatic: StudentResult[], edits?: GradeEdits) {
+  const applied = applyEdits(automatic, exercise.comments, edits);
+  await writeVisibleSheets(file, { ...exercise, comments: applied.comments }, applied.results, (workbook) => {
+    const data = workbook.addWorksheet(DATA_SHEET, { state: 'hidden' });
+    const comments: Comment[] = Object.values(exercise.comments);
+    const meta = { format: 1, exercise: exercise.key, title: exercise.title, sheetName: exercise.sheetName, gradeHeader: exercise.gradeHeader, commentsVersion: exercise.commentsVersion };
+    const values: [string, unknown][] = [
+      ['meta', meta],
+      ['comments', comments],
+      ['edits', edits ?? { version: 1 }],
+      ...automatic.map((r): [string, unknown] => [`result:${r.group ?? r.id}`, { ...r, screenshot: undefined }]),
+    ];
+    for (const [key, value] of values) {
+      const json = JSON.stringify(value);
+      for (let at = 0; at < json.length || at === 0; at += CHUNK) data.addRow([key, json.slice(at, at + CHUNK)]);
+    }
+  });
+}
+
+async function writeVisibleSheets(file: string, exercise: ExerciseInfo, results: StudentResult[], addMore: (workbook: ExcelJS.Workbook) => void) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(exercise.sheetName, { views: [{ rightToLeft: true, state: 'frozen', ySplit: 2 }] });
   const hasGroups = results.some((r) => r.group);
@@ -45,7 +168,7 @@ async function writeWorkbook(file: string, exercise: ExerciseInfo, results: Stud
   sheet.mergeCells('A1:C1');
   sheet.getCell('A1').value = exercise.title;
   sheet.mergeCells('G1:I1');
-  sheet.getCell('G1').value = 'טבלת הערות';
+  sheet.getCell('G1').value = `טבלת הערות – גרסה ${exercise.commentsVersion}`;
   const headers: [string, string][] = [
     ['A2', 'זהות'],
     ['B2', exercise.gradeHeader],
@@ -90,9 +213,10 @@ async function writeWorkbook(file: string, exercise: ExerciseInfo, results: Stud
   details.getRow(1).font = { bold: true };
   for (const { r, g } of rows) {
     const group = g.group ? [g.group] : [];
-    for (const f of r.flags) details.addRow([idCell(g.id), f.no, f.text, f.points, f.detail ?? '', ...group]);
+    for (const f of r.flags) details.addRow([idCell(g.id), f.no, f.text, f.points, f.detail ?? null, ...group]);
     for (const reason of g.review) details.addRow([idCell(g.id), null, 'לבדיקה ידנית', null, reason, ...group]);
   }
+  addMore(workbook);
   await workbook.xlsx.writeFile(file);
 }
 
@@ -139,6 +263,7 @@ function summaryHtml(exercise: ExerciseInfo, results: StudentResult[]): string {
   ${shot}
   <div class="body">
     <header><h2>${escapeHtml(r.id)}${r.students?.length ? `<small>${r.students.map(escapeHtml).join(', ')}</small>` : ''}</h2><span class="grade">${grade ?? '–'}</span></header>
+    ${r.edited || r.checked ? `<p class="edited">${[r.checked ? 'נבדק' : '', r.edited ? 'נערך ידנית' : '', r.manualGrade !== undefined ? 'ציון ידני' : ''].filter(Boolean).join(' · ')}</p>` : ''}
     ${review}
     ${flags ? `<ul>${flags}</ul>` : grade === undefined ? '' : '<p class="ok">ללא הערות</p>'}
     <a class="feedback" href="feedback/${encodeURIComponent(r.id)}.txt">משוב לסטודנט</a>
@@ -176,12 +301,13 @@ function summaryHtml(exercise: ExerciseInfo, results: StudentResult[]): string {
   small { display: block; color: var(--muted); font-size: 12px; word-break: break-word; }
   .review { margin: 0; color: var(--warn); font-size: 14px; }
   .ok { margin: 0; color: var(--good); }
+  .edited { margin: 0; font-size: 13px; font-weight: 600; color: #1d4ed8; }
   .feedback { margin-top: auto; font-size: 13px; color: #1d4ed8; }
 </style>
 </head>
 <body>
 <h1>${escapeHtml(exercise.title)}</h1>
-<p class="stats">${results.length} הגשות${results.some((r) => r.group) ? ` (${results.reduce((n, r) => n + (r.students?.length || 1), 0)} סטודנטים)` : ''} · ממוצע ${average} · ${reviewCount} לבדיקה ידנית</p>
+<p class="stats">${results.some((r) => r.edited) ? `${results.filter((r) => r.edited).length} נערכו ידנית · ` : ''}${results.length} הגשות${results.some((r) => r.group) ? ` (${results.reduce((n, r) => n + (r.students?.length || 1), 0)} סטודנטים)` : ''} · ממוצע ${average} · ${reviewCount} לבדיקה ידנית · טבלת הערות גרסה ${exercise.commentsVersion}</p>
 <main class="grid">
 ${cards.join('\n')}
 </main>

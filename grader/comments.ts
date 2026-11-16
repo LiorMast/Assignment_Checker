@@ -15,13 +15,13 @@ export interface Comment extends CommentDef {
 }
 
 /**
- * Numbers the comments in the order they are written (1, 2, 3...).
+ * Numbers the comments in the order they are written (1, 2, 3..., or from `firstNo`).
  * Once grading has started, only append new comments so existing numbers stay stable.
  */
-export function defineComments<K extends string>(defs: Record<K, CommentDef>): Record<K, Comment> {
+export function defineComments<K extends string>(defs: Record<K, CommentDef>, firstNo = 1): Record<K, Comment> {
   const table = {} as Record<K, Comment>;
   (Object.keys(defs) as K[]).forEach((key, i) => {
-    table[key] = { key, no: i + 1, ...defs[key] };
+    table[key] = { key, no: firstNo + i, ...defs[key] };
   });
   return table;
 }
